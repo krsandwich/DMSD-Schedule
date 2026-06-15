@@ -12,18 +12,9 @@ interface Props {
   warnings: Warning[];
   onTileClick: (assignment: Assignment, staff: Staff) => void;
   onDismissWarning: (w: Warning) => void;
-  onToggleShipping: (a: Assignment) => void;
 }
 
-export function DayColumn({
-  model,
-  staffById,
-  editable,
-  warnings,
-  onTileClick,
-  onDismissWarning,
-  onToggleShipping,
-}: Props) {
+export function DayColumn({ model, staffById, editable, warnings, onTileClick, onDismissWarning }: Props) {
   const date = parseIso(model.date);
 
   return (
@@ -71,19 +62,12 @@ export function DayColumn({
 
       <PersonSection label="Medical Assistants" people={model.standaloneMas} editable={editable} onTileClick={onTileClick} />
       <PersonSection label="Manager" people={model.managers} editable={editable} onTileClick={onTileClick} />
-      <CovererSection
-        label="PCC"
-        coverers={model.pccs}
-        editable={editable}
-        onTileClick={onTileClick}
-        onToggleShipping={onToggleShipping}
-      />
+      <CovererSection label="PCC" coverers={model.pccs} editable={editable} onTileClick={onTileClick} />
       <CovererSection
         label="Aesthetic Concierge"
         coverers={model.concierge}
         editable={editable}
         onTileClick={onTileClick}
-        onToggleShipping={onToggleShipping}
       />
       <PersonSection label="Esthetician" people={model.estheticians} editable={editable} onTileClick={onTileClick} />
       <PersonSection label="Wellness" people={model.wellness} editable={editable} onTileClick={onTileClick} />
@@ -200,13 +184,11 @@ function CovererSection({
   coverers,
   editable,
   onTileClick,
-  onToggleShipping,
 }: {
   label: string;
   coverers: CovererView[];
   editable: boolean;
   onTileClick: (a: Assignment, s: Staff) => void;
-  onToggleShipping: (a: Assignment) => void;
 }) {
   if (coverers.length === 0) return null;
   return (
@@ -222,21 +204,6 @@ function CovererSection({
           {c.covers.length > 0 && (
             <p className="pl-3 text-[10px] text-gray-500">covers {c.covers.map((s) => s.displayName).join(', ')}</p>
           )}
-          <label
-            className={`flex items-center gap-1 pl-3 text-[10px] ${
-              editable ? 'cursor-pointer text-gray-600' : 'text-gray-400'
-            }`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              checked={c.assignment.isShipping}
-              disabled={!editable}
-              onChange={() => onToggleShipping(c.assignment)}
-            />
-            Shipping 📦
-          </label>
         </div>
       ))}
     </Section>
