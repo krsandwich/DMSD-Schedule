@@ -9,6 +9,7 @@ import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
 import { LOCATION_LABEL, SELECTABLE_LOCATIONS } from '@/lib/locations';
 import { WEEKDAY_LABELS } from '@/lib/dates';
 import { ROLE_LABEL, roleRank } from '@/lib/roles';
+import { defaultWeekdayLocations } from '@/lib/defaultPatterns';
 import { Button } from '@/components/common/Button';
 import { Spinner } from '@/components/common/Spinner';
 
@@ -22,6 +23,17 @@ const WEEKDAYS = [1, 2, 3, 4, 5];
 
 function emptyDraft(): Draft {
   return { byWeekday: { 1: 'off', 2: 'off', 3: 'off', 4: 'off', 5: 'off' }, offText: '' };
+}
+
+/** Standard schedule pre-fill for a person with no saved pattern this month. */
+function defaultDraft(displayName: string): Draft {
+  const draft = emptyDraft();
+  const defaults = defaultWeekdayLocations(displayName);
+  for (const wd of WEEKDAYS) {
+    const loc = defaults[wd];
+    if (loc) draft.byWeekday[wd] = loc;
+  }
+  return draft;
 }
 
 function draftFromPattern(p: MonthlyPattern): Draft {
@@ -59,7 +71,7 @@ export function MonthlySetupPage() {
     const next: Record<string, Draft> = {};
     for (const s of staff) {
       const p = byStaff.get(s.id);
-      next[s.id] = p ? draftFromPattern(p) : emptyDraft();
+      next[s.id] = p ? draftFromPattern(p) : defaultDraft(s.displayName);
     }
     setDrafts(next);
   }, [staff, patternsQuery.data]);
