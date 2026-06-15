@@ -29,10 +29,10 @@ insert into staff (
   ('Jordyn',   'Jordyn',   'ma', null, null, false, false, false, false, false, false, false, false, true),
 
   -- Patient Care Coordinators (4) — handle shipping
-  ('Wendy',    'Wendy',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Kalea',    'Kalea',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Ellis',    'Ellis',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Christie', 'Christie', 'pcc', null, null, false, false, true, false, false, false, false, false, true),
+  ('Wendy',    'Wendy',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Kalea',    'Kalea',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Ellis',    'Ellis',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Christie', 'Christie', 'pcc', null, null, false, false, false, true, false, false, false, false, true),
 
   -- Estheticians (2) — need PCC, no MAs
   ('Shania', 'Shania', 'esthetician', null, null, false, false, false, false, false, true, false, false, true),
@@ -52,6 +52,6 @@ insert into staff (
   ('Sara',  'Sara',  'manager', null, 2, false, false, false, false, false, false, false, false, true),
 
   -- Aesthetic Concierge (2) — can act as PCC and handle shipping
-  ('Raella', 'Raella', 'aesthetic_concierge', null, null, false, true, true, false, false, false, false, false, true),
-  ('Maile',  'Maile',  'aesthetic_concierge', null, null, false, true, true, false, false, false, false, false, true)
+  ('Raella', 'Raella', 'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true),
+  ('Maile',  'Maile',  'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true)
 on conflict (display_name) do nothing;

@@ -177,10 +177,10 @@ insert into staff (
   ('Braelynn', 'Braelynn', 'ma', null, null, false, false, false, false, false, false, false, false, true),
   ('Jordyn',   'Jordyn',   'ma', null, null, false, false, false, false, false, false, false, false, true),
 
-  ('Wendy',    'Wendy',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Kalea',    'Kalea',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Ellis',    'Ellis',    'pcc', null, null, false, false, true, false, false, false, false, false, true),
-  ('Christie', 'Christie', 'pcc', null, null, false, false, true, false, false, false, false, false, true),
+  ('Wendy',    'Wendy',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Kalea',    'Kalea',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Ellis',    'Ellis',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Christie', 'Christie', 'pcc', null, null, false, false, false, true, false, false, false, false, true),
 
   ('Shania', 'Shania', 'esthetician', null, null, false, false, false, false, false, true, false, false, true),
   ('Mia',    'Mia',    'esthetician', null, null, false, false, false, false, false, true, false, false, true),
@@ -195,6 +195,6 @@ insert into staff (
   ('Keahi', 'Keahi', 'manager', null, 1, true,  false, false, false, false, false, false, false, true),
   ('Sara',  'Sara',  'manager', null, 2, false, false, false, false, false, false, false, false, true),
 
-  ('Raella', 'Raella', 'aesthetic_concierge', null, null, false, true, true, false, false, false, false, false, true),
-  ('Maile',  'Maile',  'aesthetic_concierge', null, null, false, true, true, false, false, false, false, false, true)
+  ('Raella', 'Raella', 'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true),
+  ('Maile',  'Maile',  'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true)
 on conflict (display_name) do nothing;
