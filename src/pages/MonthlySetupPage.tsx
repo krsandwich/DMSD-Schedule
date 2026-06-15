@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { Location, MonthlyPattern, Staff } from '@/engine/types';
 import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
-import { monthLabel, previousMonth } from '@/lib/dates';
+import { monthLabel, nextMonth, previousMonth } from '@/lib/dates';
 import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
 import { LOCATION_LABEL, SELECTABLE_LOCATIONS } from '@/lib/locations';
 import { WEEKDAY_LABELS } from '@/lib/dates';
+import { ROLE_LABEL, roleRank } from '@/lib/roles';
 import { Button } from '@/components/common/Button';
 import { Spinner } from '@/components/common/Spinner';
 
@@ -31,14 +32,23 @@ function draftFromPattern(p: MonthlyPattern): Draft {
 
 export function MonthlySetupPage() {
   const { isEditor } = useSession();
-  const [month] = useState(() => new Date());
+  const [month, setMonth] = useState(() => new Date());
 
   const staffQuery = useStaff();
   const patternsQuery = useMonthlyPatterns(month);
   const priorPatternsQuery = useMonthlyPatterns(previousMonth(month));
   const savePattern = useSavePattern(month);
 
-  const staff = useMemo(() => staffQuery.data ?? [], [staffQuery.data]);
+  const staff = useMemo(
+    () =>
+      [...(staffQuery.data ?? [])].sort(
+        (a, b) =>
+          roleRank(a.role) - roleRank(b.role) ||
+          (a.priorityRank ?? 99) - (b.priorityRank ?? 99) ||
+          a.displayName.localeCompare(b.displayName),
+      ),
+    [staffQuery.data],
+  );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [status, setStatus] = useState('');
 
@@ -122,7 +132,16 @@ export function MonthlySetupPage() {
         <Link to="/">
           <Button variant="ghost">‹ Calendar</Button>
         </Link>
-        <h1 className="text-sm font-semibold">Monthly setup — {monthLabel(month)}</h1>
+        <h1 className="text-sm font-semibold">Monthly setup</h1>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" onClick={() => setMonth(previousMonth(month))}>
+            ‹
+          </Button>
+          <span className="min-w-36 text-center text-sm font-semibold">{monthLabel(month)}</span>
+          <Button variant="ghost" onClick={() => setMonth(nextMonth(month))}>
+            ›
+          </Button>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           {status && <span className="text-xs text-gray-500">{status}</span>}
           <Button variant="secondary" onClick={carryForward}>
@@ -144,15 +163,27 @@ export function MonthlySetupPage() {
                   {l}
                 </th>
               ))}
-              <th className="p-2">Requested off (e.g. 1-3, 8-11)</th>
+              <th className="p-2">Requested off in {monthLabel(month)} (e.g. 1-3, 8-11)</th>
             </tr>
           </thead>
           <tbody>
-            {staff.map((s) => {
+            {staff.map((s, i) => {
               const d = drafts[s.id] ?? emptyDraft();
+              const showGroupHeader = i === 0 || staff[i - 1].role !== s.role;
               return (
-                <tr key={s.id} className="border-t border-gray-100">
-                  <td className="p-2 font-medium">{s.displayName}</td>
+                <Fragment key={s.id}>
+                  {showGroupHeader && (
+                    <tr className="bg-gray-50">
+                      <td
+                        colSpan={WEEKDAYS.length + 2}
+                        className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-gray-500"
+                      >
+                        {ROLE_LABEL[s.role]}
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="border-t border-gray-100">
+                    <td className="p-2 font-medium">{s.displayName}</td>
                   {WEEKDAYS.map((wd) => (
                     <td key={wd} className="p-2">
                       <select
@@ -168,15 +199,16 @@ export function MonthlySetupPage() {
                       </select>
                     </td>
                   ))}
-                  <td className="p-2">
-                    <input
-                      className="w-40 rounded border border-gray-300 px-2 py-1 text-xs"
-                      value={d.offText}
-                      placeholder="1-3, 8-11"
-                      onChange={(e) => setOffText(s.id, e.target.value)}
-                    />
-                  </td>
-                </tr>
+                    <td className="p-2">
+                      <input
+                        className="w-40 rounded border border-gray-300 px-2 py-1 text-xs"
+                        value={d.offText}
+                        placeholder="1-3, 8-11"
+                        onChange={(e) => setOffText(s.id, e.target.value)}
+                      />
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>

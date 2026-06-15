@@ -41,6 +41,10 @@ export function SchedulePage() {
   const assignments = useMemo(() => assignmentsQuery.data ?? [], [assignmentsQuery.data]);
   const dismissed = dismissedQuery.data ?? new Set<string>();
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
+  const patternsByStaff = useMemo(
+    () => new Map((patternsQuery.data ?? []).map((p) => [p.staffId, p])),
+    [patternsQuery.data],
+  );
 
   const warningsByDate = useMonthWarnings(assignments, staff, dismissed);
 
@@ -116,7 +120,7 @@ export function SchedulePage() {
             <section key={i} className="flex gap-3 overflow-x-auto pb-2">
               {week.map((day) => {
                 const iso = isoOf(day);
-                const model = buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff);
+                const model = buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patternsByStaff);
                 return (
                   <DayColumn
                     key={iso}

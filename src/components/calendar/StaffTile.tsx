@@ -29,25 +29,29 @@ export function StaffTile({ staff, assignment, editable, draggableId, onClick, c
       style={style}
       {...(draggableId && editable ? { ...drag.listeners, ...drag.attributes } : {})}
       onClick={onClick}
-      className={`flex items-center gap-1 rounded border px-1.5 py-1 text-xs leading-tight ${
+      className={`w-full overflow-hidden rounded border px-1.5 py-1 text-xs leading-tight ${
         LOCATION_TILE[assignment.location]
       } ${editable ? 'cursor-pointer hover:ring-1 hover:ring-blue-400' : ''} ${
         drag.isDragging ? 'opacity-50' : ''
       }`}
-      title={staff.displayName}
+      title={[staff.displayName, assignment.customText].filter(Boolean).join(' — ')}
     >
-      <span className={`h-2 w-2 shrink-0 rounded-full ${LOCATION_DOT[assignment.location]}`} />
-      <span className="truncate font-medium text-gray-800">{staff.displayName}</span>
-      {!compact && (
+      <div className="flex items-center gap-1">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${LOCATION_DOT[assignment.location]}`} />
+        <span className="truncate font-medium text-gray-800">{staff.displayName}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {assignment.isMod && <Badge title="Manager on Duty">MOD</Badge>}
           {assignment.isShipping && <span title="Shipping">📦</span>}
-          {assignment.isSocialMedia && <span title="Social Media">📣</span>}
-          {assignment.providerCoverageIds.length > 0 && (
+          {!compact && assignment.isSocialMedia && <span title="Social Media">📣</span>}
+          {!compact && assignment.providerCoverageIds.length > 0 && (
             <Badge title="Covering absent providers">+{assignment.providerCoverageIds.length}</Badge>
           )}
-          {assignment.customText && <span title={assignment.customText}>📝</span>}
         </span>
+      </div>
+      {assignment.customText && (
+        <p className="truncate text-[10px] font-medium text-red-600" title={assignment.customText}>
+          {assignment.customText}
+        </p>
       )}
     </div>
   );

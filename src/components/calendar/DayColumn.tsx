@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { format } from 'date-fns';
 import type { Assignment, Staff, Warning } from '@/engine/types';
-import type { DayModel, ProviderView } from '@/lib/dayModel';
+import type { CovererView, DayModel, PersonView, ProviderView } from '@/lib/dayModel';
 import { parseIso } from '@/lib/dates';
 import { StaffTile } from './StaffTile';
 
@@ -47,17 +47,6 @@ export function DayColumn({ model, staffById, editable, warnings, onTileClick, o
         </ul>
       )}
 
-      {model.mod && (
-        <Section label="MOD">
-          <StaffTile
-            staff={model.mod.staff}
-            assignment={model.mod.assignment}
-            editable={editable}
-            onClick={() => onTileClick(model.mod!.assignment, model.mod!.staff)}
-          />
-        </Section>
-      )}
-
       <Section label="Providers">
         {model.providers.map((p) => (
           <ProviderCard
@@ -71,46 +60,27 @@ export function DayColumn({ model, staffById, editable, warnings, onTileClick, o
         ))}
       </Section>
 
-      {model.coverers.length > 0 && (
-        <Section label="PCC / Concierge">
-          {model.coverers.map((c) => (
-            <div key={c.staff.id}>
-              <StaffTile
-                staff={c.staff}
-                assignment={c.assignment}
-                editable={editable}
-                onClick={() => onTileClick(c.assignment, c.staff)}
-              />
-              {c.covers.length > 0 && (
-                <p className="pl-3 text-[10px] text-gray-500">
-                  covers {c.covers.map((s) => s.displayName).join(', ')}
-                </p>
-              )}
-            </div>
-          ))}
-        </Section>
-      )}
+      <PersonSection label="Medical Assistants" people={model.standaloneMas} editable={editable} onTileClick={onTileClick} />
+      <PersonSection label="Manager" people={model.managers} editable={editable} onTileClick={onTileClick} />
+      <CovererSection label="PCC" coverers={model.pccs} editable={editable} onTileClick={onTileClick} />
+      <CovererSection
+        label="Aesthetic Concierge"
+        coverers={model.concierge}
+        editable={editable}
+        onTileClick={onTileClick}
+      />
+      <PersonSection label="Esthetician" people={model.estheticians} editable={editable} onTileClick={onTileClick} />
+      <PersonSection label="Wellness" people={model.wellness} editable={editable} onTileClick={onTileClick} />
+      <PersonSection label="Remote Team" people={model.remote} editable={editable} onTileClick={onTileClick} />
 
-      {model.others.length > 0 && (
-        <Section label="Other">
-          {model.others.map((o) => (
-            <StaffTile
-              key={o.staff.id}
-              staff={o.staff}
-              assignment={o.assignment}
-              editable={editable}
-              onClick={() => onTileClick(o.assignment, o.staff)}
-            />
-          ))}
-        </Section>
-      )}
-
-      {model.offStaff.length > 0 && (
-        <details className="text-[11px] text-gray-400">
-          <summary className="cursor-pointer">Off ({model.offStaff.length})</summary>
-          <p className="pt-1 leading-snug">{model.offStaff.map((s) => s.displayName).join(', ')}</p>
-        </details>
-      )}
+      <PersonSection label="Off" people={model.off} editable={editable} onTileClick={onTileClick} muted />
+      <PersonSection
+        label="Request Off (R/O)"
+        people={model.requestedOff}
+        editable={editable}
+        onTileClick={onTileClick}
+        muted
+      />
     </div>
   );
 }
@@ -145,6 +115,9 @@ function ProviderCard({
         editable={editable}
         onClick={() => onTileClick(view.assignment, view.staff)}
       />
+      {view.coverage.length > 0 && (
+        <p className="pl-3 text-[10px] text-gray-500">covers {view.coverage.map((s) => s.displayName).join(', ')}</p>
+      )}
       <div className="mt-1 space-y-0.5 pl-3">
         {[0, 1].map((slot) => {
           const ma = view.mas[slot];
@@ -177,10 +150,76 @@ function ProviderCard({
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function PersonSection({
+  label,
+  people,
+  editable,
+  onTileClick,
+  muted,
+}: {
+  label: string;
+  people: PersonView[];
+  editable: boolean;
+  onTileClick: (a: Assignment, s: Staff) => void;
+  muted?: boolean;
+}) {
+  if (people.length === 0) return null;
+  return (
+    <Section label={`${label} (${people.length})`} muted={muted}>
+      {people.map((p) => (
+        <StaffTile
+          key={p.staff.id}
+          staff={p.staff}
+          assignment={p.assignment}
+          editable={editable}
+          onClick={() => onTileClick(p.assignment, p.staff)}
+        />
+      ))}
+    </Section>
+  );
+}
+
+function CovererSection({
+  label,
+  coverers,
+  editable,
+  onTileClick,
+}: {
+  label: string;
+  coverers: CovererView[];
+  editable: boolean;
+  onTileClick: (a: Assignment, s: Staff) => void;
+}) {
+  if (coverers.length === 0) return null;
+  return (
+    <Section label={`${label} (${coverers.length})`}>
+      {coverers.map((c) => (
+        <div key={c.staff.id}>
+          <StaffTile
+            staff={c.staff}
+            assignment={c.assignment}
+            editable={editable}
+            onClick={() => onTileClick(c.assignment, c.staff)}
+          />
+          {c.covers.length > 0 && (
+            <p className="pl-3 text-[10px] text-gray-500">covers {c.covers.map((s) => s.displayName).join(', ')}</p>
+          )}
+        </div>
+      ))}
+    </Section>
+  );
+}
+
+function Section({ label, children, muted }: { label: string; children: React.ReactNode; muted?: boolean }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+      <p
+        className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${
+          muted ? 'text-gray-300' : 'text-gray-400'
+        }`}
+      >
+        {label}
+      </p>
       <div className="space-y-1">{children}</div>
     </div>
   );

@@ -66,6 +66,18 @@ describe('Step 4 — assign MAs', () => {
     expect(maCount(day, 'tricia')).toBe(0);
   });
 
+  it('distributes evenly among non-Tricia providers (counts differ by at most 1)', () => {
+    // All same location; full MA pool (10 after Keahi becomes MOD).
+    const day = dayFrom(allWorking(staff, 'kona'));
+    assignMod(day, staff); // keahi -> MOD
+    assignMAs(day, staff);
+    expect(maCount(day, 'tricia')).toBe(2); // Tricia guaranteed 2
+    const others = PROVIDER_IDS.filter((id) => id !== 'tricia').map((id) => maCount(day, id));
+    expect(Math.max(...others) - Math.min(...others)).toBeLessThanOrEqual(1);
+    // No non-Tricia provider sits at 0 while another reaches 2.
+    expect(others.includes(0) && others.includes(2)).toBe(false);
+  });
+
   it('assigns sequential MA slots (1, 2) under a provider', () => {
     const day = dayFrom(allWorking(staff));
     assignMod(day, staff);
