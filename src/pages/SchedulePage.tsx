@@ -81,6 +81,10 @@ export function SchedulePage() {
     });
   };
 
+  const handleToggleShipping = (a: Assignment) => {
+    upsert.mutate({ ...a, isShipping: !a.isShipping });
+  };
+
   const handleGenerate = () => {
     const { assignments: generated } = generateMonth({
       staff,
@@ -130,6 +134,7 @@ export function SchedulePage() {
                     warnings={warningsByDate.get(iso) ?? []}
                     onTileClick={(assignment, s) => isEditor && setEditing({ assignment, staff: s })}
                     onDismissWarning={(w) => dismiss.mutate(w)}
+                    onToggleShipping={handleToggleShipping}
                   />
                 );
               })}

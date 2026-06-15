@@ -3,7 +3,11 @@ import { resolveAttendance } from '../attendance';
 import { assignPCCs } from '../assignPCCs';
 import type { DayMap, MonthlyPattern } from '../types';
 import { buildRoster } from './roster.fixture';
-import { allWorking, makeOff } from './patterns.fixture';
+import { allWorking, makeOff, patch } from './patterns.fixture';
+
+const ALL_WAIMEA = {
+  locationByWeekday: { '1': 'waimea', '2': 'waimea', '3': 'waimea', '4': 'waimea', '5': 'waimea' },
+} as const;
 
 function dayFrom(patterns: MonthlyPattern[], staff = buildRoster()) {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
@@ -38,6 +42,39 @@ describe('Step 5 — assign PCCs / aesthetic concierge', () => {
       coversCount(day, 'christie');
     expect(pccTotal).toBe(8);
     expect(coversCount(day, 'raella') + coversCount(day, 'maile')).toBe(1);
+  });
+
+  it('only assigns a coverer at the same location as the target', () => {
+    const day = dayFrom(allWorking(staff, 'kona'));
+    assignPCCs(day, staff);
+    // Every covered target shares its coverer's location.
+    for (const c of day.values()) {
+      for (const targetId of c.pccCoversIds) {
+        expect(day.get(targetId)?.location).toBe(c.location);
+      }
+    }
+  });
+
+  it('leaves a target uncovered when no same-location coverer is working', () => {
+    // Monica at waimea; all PCCs and concierge at kona -> Monica uncovered.
+    const patterns = patch(allWorking(staff, 'kona'), 'monica', ALL_WAIMEA);
+    const day = dayFrom(patterns);
+    assignPCCs(day, staff);
+    const covered = new Set<string>();
+    for (const c of day.values()) for (const id of c.pccCoversIds) covered.add(id);
+    expect(covered.has('monica')).toBe(false);
+  });
+
+  it('covers a target when a same-location coverer exists', () => {
+    // Monica AND Wendy both at waimea; rest at kona -> Wendy covers Monica.
+    let patterns = patch(allWorking(staff, 'kona'), 'monica', ALL_WAIMEA);
+    patterns = patch(patterns, 'wendy', ALL_WAIMEA);
+    const day = dayFrom(patterns);
+    assignPCCs(day, staff);
+    expect(coversCount(day, 'wendy')).toBeGreaterThan(0);
+    const covered = new Set<string>();
+    for (const c of day.values()) for (const id of c.pccCoversIds) covered.add(id);
+    expect(covered.has('monica')).toBe(true);
   });
 
   it('exceeds the soft max only when no coverer has spare capacity', () => {

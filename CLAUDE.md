@@ -216,7 +216,7 @@ Resolve present/off for each staff member and set each present person's location
 - Targets needing coverage daily: **6 providers + 2 estheticians + RN Abby** (9 boxes).
 - Each PCC covers **1–2** targets as a soft goal but **may exceed 2** when needed.
 - **Gap-fill order:** assign the 4 PCCs first; cover any remaining targets with **Aesthetic Concierge (Raella, Maile)** acting as PCC.
-- *(Soft preference, not enforced: cover targets at the PCC's own location.)*
+- **Location constraint (hard):** a PCC/concierge may only cover a target at the **same location** that day. A target with no same-location coverer is left uncovered → **warning**. *(Changed from the original soft preference per client request.)*
 
 ### Step 6 — Shipping
 - Per-day **Shipping checkbox** on each PCC and each Aesthetic Concierge.
@@ -270,7 +270,7 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
 - Enforce the single-editor rule in the DB via RLS, not only in the UI.
 - **Assumptions baked in (flag if any should change):**
   1. MA location must match the assigned provider's location (hard constraint).
-  2. PCC/concierge location matching is a soft preference, not enforced.
+  2. PCC/concierge location matching is now a HARD constraint (changed per client request); a target with no same-location coverer is left uncovered and warned.
   3. MOD required only on operating days (Mon–Fri); weekends out of scope.
   4. "Even coverage" = coverage-assignment count per covering provider per week, reset Monday.
   5. Estheticians and wellness receive no MAs; only the 6 providers do.
