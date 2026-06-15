@@ -41,16 +41,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         .eq('id', session!.user.id)
         .maybeSingle();
       if (error) throw error;
-      return data?.app_role ?? 'viewer';
+      // TEMPORARY: everyone is an editor for now (see migration 0003_all_editors.sql).
+      return data?.app_role ?? 'editor';
     },
   });
+
+  // TEMPORARY: any signed-in user is treated as an editor.
+  const isEditor = !!session;
 
   const value = useMemo<SessionState>(
     () => ({
       session,
       loading,
       appRole,
-      isEditor: appRole === 'editor',
+      isEditor,
       signInWithGitHub: async () => {
         await supabase.auth.signInWithOAuth({
           provider: 'github',
