@@ -12,6 +12,7 @@ drop function if exists is_editor() cascade;
 
 drop table if exists dismissed_warnings cascade;
 drop table if exists daily_assignments cascade;
+drop table if exists monthly_holidays cascade;
 drop table if exists monthly_patterns cascade;
 drop table if exists app_users cascade;
 drop table if exists staff cascade;
@@ -35,21 +36,14 @@ create table app_users (
 );
 
 create table staff (
-  id                      uuid primary key default gen_random_uuid(),
-  name                    text not null,
-  display_name            text not null unique,
-  role                    role not null,
-  priority_rank           int,
-  mod_priority            int,
-  in_ma_pool              boolean not null default false,
-  can_social_media        boolean not null default false,
-  can_pcc                 boolean not null default false,
-  can_shipping            boolean not null default false,
-  receives_mas            boolean not null default false,
-  needs_pcc               boolean not null default false,
-  needs_coverage_when_out boolean not null default false,
-  can_cover_providers     boolean not null default false,
-  active                  boolean not null default true
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  display_name text not null unique,
+  role         role not null,
+  can_pcc      boolean not null default false,   -- aesthetic concierge can PCC
+  receives_mas boolean not null default false,   -- the 6 providers
+  needs_pcc    boolean not null default false,   -- providers, estheticians, wellness
+  active       boolean not null default true
 );
 
 create table monthly_patterns (
@@ -59,6 +53,12 @@ create table monthly_patterns (
   usual_weekdays      int[] not null default '{}',
   location_by_weekday jsonb not null default '{}',
   requested_off_days  int[] not null default '{}',
+  default_target_id   uuid references staff(id) on delete set null, -- MA->provider, PCC->target
+  wants_two_mas       boolean not null default false,               -- provider filled to 2 MAs first
+  coverage            boolean not null default false,               -- provider needs + provides coverage
+  provider_rank       int,                                          -- provider fill order, 1 = highest
+  mod_rank            int,                                          -- MOD rank, 1 = highest
+  shipping_rank       int,                                          -- shipping rank, 1 = highest
   unique (staff_id, month)
 );
 
@@ -85,6 +85,11 @@ create table dismissed_warnings (
   type    text not null,
   ref_key text not null,
   primary key (date, type, ref_key)
+);
+
+create table monthly_holidays (
+  month date primary key,
+  days  int[] not null default '{}'
 );
 
 -- ============================================================
@@ -124,18 +129,22 @@ $$;
 alter table app_users          enable row level security;
 alter table staff              enable row level security;
 alter table monthly_patterns   enable row level security;
+alter table monthly_holidays   enable row level security;
 alter table daily_assignments  enable row level security;
 alter table dismissed_warnings enable row level security;
 
 create policy app_users_select_self on app_users
   for select to authenticated using (id = auth.uid());
 
+-- Schedule tables are publicly readable (read-only); writes are editor-only.
+grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings to anon;
+
 do $$
 declare t text;
 begin
-  foreach t in array array['staff','monthly_patterns','daily_assignments','dismissed_warnings']
+  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings']
   loop
-    execute format('create policy %1$s_select on %1$s for select to authenticated using (true);', t);
+    execute format('create policy %1$s_select on %1$s for select to public using (true);', t);
     execute format('create policy %1$s_insert on %1$s for insert to authenticated with check (is_editor());', t);
     execute format('create policy %1$s_update on %1$s for update to authenticated using (is_editor()) with check (is_editor());', t);
     execute format('create policy %1$s_delete on %1$s for delete to authenticated using (is_editor());', t);
@@ -155,46 +164,44 @@ end $$;
 -- 3) Roster seed (CLAUDE.md §4)
 -- ============================================================
 insert into staff (
-  name, display_name, role, priority_rank, mod_priority, in_ma_pool,
-  can_social_media, can_pcc, can_shipping, receives_mas, needs_pcc,
-  needs_coverage_when_out, can_cover_providers, active
+  name, display_name, role, can_pcc, receives_mas, needs_pcc, active
 ) values
-  ('PA Tricia',       'PA Tricia',       'provider', 1, null, false, false, false, false, true, true, true,  true,  true),
-  ('PA Natalie',      'PA Natalie',      'provider', 2, null, false, false, false, false, true, true, true,  true,  true),
-  ('Dr. Monica',      'Dr. Monica',      'provider', 3, null, false, false, false, false, true, true, true,  true,  true),
-  ('RN Steph',        'RN Steph',        'provider', 4, null, false, false, false, false, true, true, false, false, true),
-  ('PA Kendra',       'PA Kendra',       'provider', 5, null, false, false, false, false, true, true, true,  true,  true),
-  ('Dr. Shama Brown', 'Dr. Shama Brown', 'provider', 6, null, false, false, false, false, true, true, false, true,  true),
+  ('PA Tricia',  'PA Tricia',  'provider', false, true, true, true),
+  ('PA Natalie', 'PA Natalie', 'provider', false, true, true, true),
+  ('Dr. Monica', 'Dr. Monica', 'provider', false, true, true, true),
+  ('RN Steph',   'RN Steph',   'provider', false, true, true, true),
+  ('PA Kendra',  'PA Kendra',  'provider', false, true, true, true),
+  ('Dr. Shama',  'Dr. Shama',  'provider', false, true, true, true),
 
-  ('Reina',    'Reina',    'ma', null, 3,    false, false, false, false, false, false, false, false, true),
-  ('Sandra',   'Sandra',   'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Huaka',    'Huaka',    'ma', null, null, false, true,  false, false, false, false, false, false, true),
-  ('Sara I.',  'Sara I.',  'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Mya',      'Mya',      'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Pu''uwai', 'Pu''uwai', 'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Sena',     'Sena',     'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Alana',    'Alana',    'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Braelynn', 'Braelynn', 'ma', null, null, false, false, false, false, false, false, false, false, true),
-  ('Jordyn',   'Jordyn',   'ma', null, null, false, false, false, false, false, false, false, false, true),
+  ('Reina',    'Reina',    'ma', false, false, false, true),
+  ('Sandra',   'Sandra',   'ma', false, false, false, true),
+  ('Huaka',    'Huaka',    'ma', false, false, false, true),
+  ('Sara I.',  'Sara I.',  'ma', false, false, false, true),
+  ('Mya',      'Mya',      'ma', false, false, false, true),
+  ('Pu''uwai', 'Pu''uwai', 'ma', false, false, false, true),
+  ('Sena',     'Sena',     'ma', false, false, false, true),
+  ('Alana',    'Alana',    'ma', false, false, false, true),
+  ('Braelynn', 'Braelynn', 'ma', false, false, false, true),
+  ('Jordyn',   'Jordyn',   'ma', false, false, false, true),
 
-  ('Wendy',    'Wendy',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
-  ('Kalea',    'Kalea',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
-  ('Ellis',    'Ellis',    'pcc', null, null, false, false, false, true, false, false, false, false, true),
-  ('Christie', 'Christie', 'pcc', null, null, false, false, false, true, false, false, false, false, true),
+  ('Wendy',    'Wendy',    'pcc', false, false, false, true),
+  ('Kalea',    'Kalea',    'pcc', false, false, false, true),
+  ('Ellis',    'Ellis',    'pcc', false, false, false, true),
+  ('Christie', 'Christie', 'pcc', false, false, false, true),
 
-  ('Shania', 'Shania', 'esthetician', null, null, false, false, false, false, false, true, false, false, true),
-  ('Mia',    'Mia',    'esthetician', null, null, false, false, false, false, false, true, false, false, true),
+  ('Shania', 'Shania', 'esthetician', false, false, true, true),
+  ('Mia',    'Mia',    'esthetician', false, false, true, true),
 
-  ('RN Abby', 'RN Abby', 'wellness', null, null, false, false, false, false, false, true, false, false, true),
+  ('RN Abby', 'RN Abby', 'wellness', false, false, true, true),
 
-  ('Catalina', 'Catalina', 'remote', null, null, false, false, false, false, false, false, false, false, true),
-  ('Jade',     'Jade',     'remote', null, null, false, false, true,  false, false, false, false, false, true),
-  ('Michelle', 'Michelle', 'remote', null, null, false, false, false, false, false, false, false, false, true),
-  ('Jo',       'Jo',       'remote', null, null, false, false, false, false, false, false, false, false, true),
+  ('Catalina', 'Catalina', 'remote', false, false, false, true),
+  ('Jade',     'Jade',     'remote', false, false, false, true),
+  ('Michelle', 'Michelle', 'remote', false, false, false, true),
+  ('Jo',       'Jo',       'remote', false, false, false, true),
 
-  ('Keahi', 'Keahi', 'manager', null, 1, true,  false, false, false, false, false, false, false, true),
-  ('Sara',  'Sara',  'manager', null, 2, false, false, false, false, false, false, false, false, true),
+  ('Keahi', 'Keahi', 'manager', false, false, false, true),
+  ('Sara',  'Sara',  'manager', false, false, false, true),
 
-  ('Raella', 'Raella', 'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true),
-  ('Maile',  'Maile',  'aesthetic_concierge', null, null, false, false, true, true, false, false, false, false, true)
+  ('Raella', 'Raella', 'aesthetic_concierge', true, false, false, true),
+  ('Maile',  'Maile',  'aesthetic_concierge', true, false, false, true)
 on conflict (display_name) do nothing;

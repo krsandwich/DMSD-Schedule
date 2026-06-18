@@ -1,5 +1,5 @@
 import { isWorking } from './attendance';
-import type { DayMap, Staff } from './types';
+import type { DayMap, MonthlyPattern, Staff } from './types';
 
 const MAX_MAS = 2;
 
@@ -9,25 +9,34 @@ const MAX_MAS = 2;
  * Recipients: the 6 providers (`receivesMas`) that are working. Each gets min 1,
  * max 2 MAs.
  *
- * MA pool = the 10 MAs + Keahi (`role === 'ma' || inMaPool`), minus the MOD and
- * anyone off. Hard constraint: an MA may only be assigned to a provider at the
- * SAME location that day.
+ * MA pool = the MAs (`role === 'ma'`), minus the MOD and anyone off. Managers may
+ * be assigned as an MA manually in the editor, but are never auto-pooled here.
+ * Hard constraint: an MA may only be assigned to a provider at the SAME location.
  *
  * Distribution:
- *   1. Tricia (priority 1) is guaranteed 2 first.
- *   2. Everyone else is balanced evenly: each remaining MA goes to the working
- *      provider with the FEWEST MAs so far (tie-break by provider priority) that
- *      has an available same-location MA. This prevents a lower-priority provider
- *      sitting at 0 while a higher-priority one reaches 2 at the same location.
+ *   1. Every working provider gets one MA, in provider-priority order.
+ *   2. Providers flagged "2 MAs" in monthly setup get a second MA, in
+ *      provider-priority order.
+ * MA selection prefers an MA whose default provider (set in monthly setup) is the
+ * one being filled, then an MA not reserved for some other working provider. Any
+ * MAs left over after step 2 stay unassigned.
  */
-export function assignMAs(day: DayMap, staff: Staff[]): void {
+export function assignMAs(
+  day: DayMap,
+  staff: Staff[],
+  patternsByStaff: Map<string, MonthlyPattern> = new Map(),
+): void {
+  // Provider fill order comes from the per-month rank set in monthly setup.
+  const rankOf = (p: Staff) => patternsByStaff.get(p.id)?.providerRank ?? 99;
   const providers = staff
     .filter((s) => s.receivesMas && isWorking(day, s.id))
-    .sort((a, b) => (a.priorityRank ?? 99) - (b.priorityRank ?? 99));
+    .sort((a, b) => rankOf(a) - rankOf(b));
+  const providerById = new Map(providers.map((p) => [p.id, p]));
 
-  // Available MAs (working, in pool, not the MOD, not already assigned).
-  const pool: Staff[] = staff.filter((s) => {
-    if (!(s.role === 'ma' || s.inMaPool)) return false;
+  // Available MAs (working, not the MOD, not already assigned). Managers are NOT
+  // auto-pooled — they can be assigned as an MA manually in the editor.
+  let pool: Staff[] = staff.filter((s) => {
+    if (s.role !== 'ma') return false;
     if (!isWorking(day, s.id)) return false;
     const a = day.get(s.id);
     return !!a && !a.isMod && a.assignedProviderId === null;
@@ -36,43 +45,39 @@ export function assignMAs(day: DayMap, staff: Staff[]): void {
   const counts = new Map<string, number>(); // providerId -> MAs assigned
   const locationOf = (p: Staff) => day.get(p.id)?.location ?? 'off';
 
-  const place = (provider: Staff): boolean => {
+  const assignTo = (ma: Staff, provider: Staff) => {
     const current = counts.get(provider.id) ?? 0;
-    if (current >= MAX_MAS) return false;
-    const idx = pool.findIndex((m) => day.get(m.id)?.location === locationOf(provider));
-    if (idx === -1) return false;
-    const [ma] = pool.splice(idx, 1);
     const a = day.get(ma.id);
     if (a) {
       a.assignedProviderId = provider.id;
       a.maSlot = current + 1;
     }
     counts.set(provider.id, current + 1);
+    pool = pool.filter((m) => m.id !== ma.id);
+  };
+
+  const place = (provider: Staff): boolean => {
+    if ((counts.get(provider.id) ?? 0) >= MAX_MAS) return false;
+    const sameLoc = pool.filter((m) => day.get(m.id)?.location === locationOf(provider));
+    if (sameLoc.length === 0) return false;
+    const ma =
+      // an MA whose default provider is this one
+      sameLoc.find((m) => patternsByStaff.get(m.id)?.defaultTargetId === provider.id) ??
+      // otherwise an MA not reserved for some other working provider
+      sameLoc.find((m) => {
+        const t = patternsByStaff.get(m.id)?.defaultTargetId;
+        return !t || !providerById.has(t);
+      }) ??
+      sameLoc[0];
+    assignTo(ma, provider);
     return true;
   };
 
-  // 1. Tricia is guaranteed up to 2 first.
-  const tricia = providers.find((p) => p.priorityRank === 1);
-  if (tricia) {
-    place(tricia);
-    place(tricia);
-  }
+  // 1. Every working provider gets one MA, in priority order.
+  for (const provider of providers) place(provider);
 
-  // 2. Distribute the rest evenly by lowest current count.
-  while (pool.length > 0) {
-    const candidates = providers.filter(
-      (p) =>
-        (counts.get(p.id) ?? 0) < MAX_MAS &&
-        pool.some((m) => day.get(m.id)?.location === locationOf(p)),
-    );
-    if (candidates.length === 0) break; // remaining MAs have no same-location provider
-
-    candidates.sort((a, b) => {
-      const byCount = (counts.get(a.id) ?? 0) - (counts.get(b.id) ?? 0);
-      if (byCount !== 0) return byCount;
-      return (a.priorityRank ?? 99) - (b.priorityRank ?? 99);
-    });
-
-    place(candidates[0]);
+  // 2. Providers flagged "2 MAs" get a second MA, in priority order.
+  for (const provider of providers) {
+    if (patternsByStaff.get(provider.id)?.wantsTwoMas) place(provider);
   }
 }

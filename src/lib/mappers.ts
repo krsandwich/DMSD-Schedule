@@ -9,16 +9,9 @@ export function staffFromRow(r: StaffRow): Staff {
     name: r.name,
     displayName: r.display_name,
     role: r.role,
-    priorityRank: r.priority_rank,
-    modPriority: r.mod_priority,
-    inMaPool: r.in_ma_pool,
-    canSocialMedia: r.can_social_media,
     canPcc: r.can_pcc,
-    canShipping: r.can_shipping,
     receivesMas: r.receives_mas,
     needsPcc: r.needs_pcc,
-    needsCoverageWhenOut: r.needs_coverage_when_out,
-    canCoverProviders: r.can_cover_providers,
     active: r.active,
   };
 }
@@ -30,6 +23,12 @@ export function patternFromRow(r: MonthlyPatternRow): MonthlyPattern {
     usualWeekdays: r.usual_weekdays,
     locationByWeekday: r.location_by_weekday,
     requestedOffDays: r.requested_off_days,
+    defaultTargetId: r.default_target_id,
+    wantsTwoMas: r.wants_two_mas,
+    coverage: r.coverage,
+    providerRank: r.provider_rank,
+    modRank: r.mod_rank,
+    shippingRank: r.shipping_rank,
   };
 }
 

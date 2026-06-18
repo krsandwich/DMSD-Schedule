@@ -1,10 +1,11 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useSession } from '@/hooks/useSession';
-import { Button } from '@/components/common/Button';
+import { SignInForm } from '@/components/common/SignInForm';
 import { Spinner } from '@/components/common/Spinner';
 
 export function LoginPage() {
-  const { session, loading, signInWithGitHub } = useSession();
+  const { session, loading } = useSession();
+  const navigate = useNavigate();
 
   if (loading) return <Spinner />;
   if (session) return <Navigate to="/" replace />;
@@ -15,7 +16,9 @@ export function LoginPage() {
         <h1 className="text-2xl font-bold">DMSD Scheduler</h1>
         <p className="mt-1 text-sm text-gray-500">Dermatology office staffing calendar</p>
       </div>
-      <Button onClick={signInWithGitHub}>Sign in with GitHub</Button>
+      <div className="w-72 rounded-lg border border-gray-200 p-5 shadow-sm">
+        <SignInForm onSuccess={() => navigate('/')} />
+      </div>
     </div>
   );
 }

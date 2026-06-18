@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { computeWarnings } from '@/engine';
-import type { Assignment, Staff, Warning } from '@/engine/types';
+import type { Assignment, MonthlyPattern, Staff, Warning } from '@/engine/types';
 import { warningKey } from './useDismissedWarnings';
 
 /**
@@ -11,6 +11,7 @@ export function useMonthWarnings(
   assignments: Assignment[],
   staff: Staff[],
   dismissed: Set<string>,
+  patternsByStaff: Map<string, MonthlyPattern>,
 ): Map<string, Warning[]> {
   return useMemo(() => {
     const byDate = new Map<string, Assignment[]>();
@@ -22,11 +23,11 @@ export function useMonthWarnings(
 
     const result = new Map<string, Warning[]>();
     for (const [date, dayAssignments] of byDate) {
-      const active = computeWarnings(date, dayAssignments, staff).filter(
+      const active = computeWarnings(date, dayAssignments, staff, patternsByStaff).filter(
         (w) => !dismissed.has(warningKey(w)),
       );
       if (active.length) result.set(date, active);
     }
     return result;
-  }, [assignments, staff, dismissed]);
+  }, [assignments, staff, dismissed, patternsByStaff]);
 }

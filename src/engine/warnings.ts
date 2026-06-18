@@ -1,4 +1,4 @@
-import type { Assignment, Staff, Warning } from './types';
+import type { Assignment, MonthlyPattern, Staff, Warning } from './types';
 
 /**
  * Step 9 — Warnings.
@@ -11,6 +11,7 @@ export function computeWarnings(
   isoDate: string,
   dayAssignments: Assignment[],
   staff: Staff[],
+  patternsByStaff: Map<string, MonthlyPattern> = new Map(),
 ): Warning[] {
   const warnings: Warning[] = [];
   const staffById = new Map(staff.map((s) => [s.id, s]));
@@ -52,12 +53,12 @@ export function computeWarnings(
     }
   }
 
-  // Out provider (other than Steph/Shama) has no coverage.
+  // Out provider flagged for coverage has no coverage assigned.
   const coveredIds = new Set<string>();
   for (const a of dayAssignments) for (const id of a.providerCoverageIds) coveredIds.add(id);
   for (const provider of staff) {
     if (provider.role !== 'provider') continue;
-    if (!provider.needsCoverageWhenOut) continue;
+    if (!patternsByStaff.get(provider.id)?.coverage) continue;
     if (working(provider.id)) continue;
     if (!coveredIds.has(provider.id)) {
       warnings.push({

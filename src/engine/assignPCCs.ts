@@ -1,5 +1,5 @@
 import { isWorking } from './attendance';
-import type { DayMap, Location, Staff } from './types';
+import type { DayMap, Location, MonthlyPattern, Staff } from './types';
 
 const SOFT_MAX = 2;
 
@@ -14,11 +14,17 @@ const SOFT_MAX = 2;
  * the SAME location that day. A target with no same-location coverer is left
  * uncovered (and raises a warning).
  *
- * Gap-fill order: assign the 4 PCCs first; cover any remaining targets with
- * Aesthetic Concierge (`canPcc`) acting as PCC.
+ * Defaults: a PCC with a default target (set in monthly setup) covers that target
+ * first when both are working at the same location. Remaining targets gap-fill in
+ * order: the 4 PCCs first, then Aesthetic Concierge (`canPcc`) acting as PCC.
  */
-export function assignPCCs(day: DayMap, staff: Staff[]): void {
+export function assignPCCs(
+  day: DayMap,
+  staff: Staff[],
+  patternsByStaff: Map<string, MonthlyPattern> = new Map(),
+): void {
   const targets = staff.filter((s) => s.needsPcc && isWorking(day, s.id));
+  const targetIds = new Set(targets.map((t) => t.id));
 
   const pccs = staff.filter((s) => s.role === 'pcc' && isWorking(day, s.id));
   const concierge = staff.filter(
@@ -28,6 +34,13 @@ export function assignPCCs(day: DayMap, staff: Staff[]): void {
   const load = new Map<string, number>();
   const loadOf = (id: string) => load.get(id) ?? 0;
   const locationOf = (id: string): Location | undefined => day.get(id)?.location;
+  const covered = new Set<string>();
+
+  const cover = (covererId: string, targetId: string) => {
+    day.get(covererId)?.pccCoversIds.push(targetId);
+    load.set(covererId, loadOf(covererId) + 1);
+    covered.add(targetId);
+  };
 
   const assign = (coverers: Staff[], targetId: string, respectSoftMax: boolean): boolean => {
     const targetLoc = locationOf(targetId);
@@ -38,12 +51,20 @@ export function assignPCCs(day: DayMap, staff: Staff[]): void {
       if (!best || loadOf(c.id) < loadOf(best.id)) best = c;
     }
     if (!best) return false;
-    day.get(best.id)?.pccCoversIds.push(targetId);
-    load.set(best.id, loadOf(best.id) + 1);
+    cover(best.id, targetId);
     return true;
   };
 
+  // Honor default targets first (same location, target working & not yet covered).
+  for (const coverer of [...pccs, ...concierge]) {
+    const targetId = patternsByStaff.get(coverer.id)?.defaultTargetId;
+    if (!targetId || covered.has(targetId) || !targetIds.has(targetId)) continue;
+    if (locationOf(coverer.id) !== locationOf(targetId)) continue;
+    cover(coverer.id, targetId);
+  }
+
   for (const target of targets) {
+    if (covered.has(target.id)) continue;
     // Same-location PCCs first (respecting soft max), then same-location concierge,
     // then exceed soft max on PCCs, finally exceed on concierge.
     if (assign(pccs, target.id, true)) continue;

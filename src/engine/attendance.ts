@@ -7,6 +7,9 @@ import type { Assignment, DayMap, Location, MonthlyPattern, Staff } from './type
  * day-of-month is not in `requestedOffDays`. Working people take their location
  * from `locationByWeekday`; everyone else renders `off`.
  *
+ * A weekday set to `'alternating'` resolves to Kona on even-parity weeks and
+ * Waimea on odd-parity weeks (`weekParity`, supplied by the caller).
+ *
  * Returns a fresh assignment row for every active staff member for the day.
  */
 export function resolveAttendance(
@@ -15,6 +18,7 @@ export function resolveAttendance(
   weekday: number,
   staff: Staff[],
   patternsByStaff: Map<string, MonthlyPattern>,
+  weekParity: 0 | 1 = 0,
 ): DayMap {
   const day: DayMap = new Map();
 
@@ -28,7 +32,8 @@ export function resolveAttendance(
       const worksWeekday = pattern.usualWeekdays.includes(weekday);
       const isOff = pattern.requestedOffDays.includes(dayOfMonth);
       if (worksWeekday && !isOff) {
-        location = pattern.locationByWeekday[String(weekday)] ?? 'off';
+        const choice = pattern.locationByWeekday[String(weekday)] ?? 'off';
+        location = choice === 'alternating' ? (weekParity === 0 ? 'kona' : 'waimea') : choice;
       }
     }
 

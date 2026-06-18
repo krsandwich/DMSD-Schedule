@@ -1,7 +1,7 @@
 // Hand-written DB row types mirroring supabase/migrations.
 // (Regenerate with `supabase gen types typescript` once the project is linked.)
 
-import type { Location, Role } from '@/engine/types';
+import type { Location, Role, WeekdayLocation } from '@/engine/types';
 
 export type AppRole = 'editor' | 'viewer';
 
@@ -10,16 +10,9 @@ export type StaffRow = {
   name: string;
   display_name: string;
   role: Role;
-  priority_rank: number | null;
-  mod_priority: number | null;
-  in_ma_pool: boolean;
-  can_social_media: boolean;
   can_pcc: boolean;
-  can_shipping: boolean;
   receives_mas: boolean;
   needs_pcc: boolean;
-  needs_coverage_when_out: boolean;
-  can_cover_providers: boolean;
   active: boolean;
 }
 
@@ -28,8 +21,14 @@ export type MonthlyPatternRow = {
   staff_id: string;
   month: string;
   usual_weekdays: number[];
-  location_by_weekday: Record<string, Location>;
+  location_by_weekday: Record<string, WeekdayLocation>;
   requested_off_days: number[];
+  default_target_id: string | null;
+  wants_two_mas: boolean;
+  coverage: boolean;
+  provider_rank: number | null;
+  mod_rank: number | null;
+  shipping_rank: number | null;
 }
 
 export type DailyAssignmentRow = {
@@ -45,6 +44,11 @@ export type DailyAssignmentRow = {
   is_shipping: boolean;
   is_social_media: boolean;
   custom_text: string | null;
+}
+
+export type MonthlyHolidayRow = {
+  month: string;
+  days: number[];
 }
 
 export type DismissedWarningRow = {
@@ -72,6 +76,7 @@ export interface Database {
     Tables: {
       staff: Table<StaffRow>;
       monthly_patterns: Table<MonthlyPatternRow, Omit<MonthlyPatternRow, 'id'>>;
+      monthly_holidays: Table<MonthlyHolidayRow, MonthlyHolidayRow>;
       daily_assignments: Table<DailyAssignmentRow, Omit<DailyAssignmentRow, 'id'>>;
       dismissed_warnings: Table<DismissedWarningRow, DismissedWarningRow>;
       app_users: Table<AppUserRow>;

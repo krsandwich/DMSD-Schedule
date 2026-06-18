@@ -9,10 +9,11 @@ interface Props {
   /** MA tiles can be dragged onto providers to reassign. */
   draggableId?: string;
   onClick?: () => void;
-  compact?: boolean;
+  /** Names this person covers (absent providers, or PCC targets) — shown inside the tile. */
+  covers?: Staff[];
 }
 
-export function StaffTile({ staff, assignment, editable, draggableId, onClick, compact }: Props) {
+export function StaffTile({ staff, assignment, editable, draggableId, onClick, covers }: Props) {
   const drag = useDraggable({
     id: draggableId ?? `static:${assignment.date}:${staff.id}`,
     data: { assignment, staff },
@@ -42,14 +43,25 @@ export function StaffTile({ staff, assignment, editable, draggableId, onClick, c
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {assignment.isMod && <Badge title="Manager on Duty">MOD</Badge>}
           {assignment.isShipping && <span title="Shipping">📦</span>}
-          {!compact && assignment.isSocialMedia && <span title="Social Media">📣</span>}
-          {!compact && assignment.providerCoverageIds.length > 0 && (
-            <Badge title="Covering absent providers">+{assignment.providerCoverageIds.length}</Badge>
-          )}
+          {assignment.isSocialMedia && <span title="Social Media">📣</span>}
         </span>
       </div>
+      {covers && covers.length > 0 && (
+        <p
+          className="truncate text-[10px] font-medium text-gray-700"
+          title={`covers ${covers.map((s) => s.displayName).join(', ')}`}
+        >
+          <span className="mr-0.5" aria-hidden>
+            🔄
+          </span>
+          {covers.map((s) => s.displayName).join(', ')}
+        </p>
+      )}
       {assignment.customText && (
         <p className="truncate text-[10px] font-medium text-red-600" title={assignment.customText}>
+          <span className="mr-0.5" aria-hidden>
+            🖊️
+          </span>
           {assignment.customText}
         </p>
       )}

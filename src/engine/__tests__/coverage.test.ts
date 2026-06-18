@@ -1,60 +1,76 @@
 import { describe, expect, it } from 'vitest';
 import { resolveAttendance } from '../attendance';
 import { assignCoverage } from '../coverage';
-import type { MonthlyPattern } from '../types';
+import type { DayMap, MonthlyPattern } from '../types';
 import { buildRoster } from './roster.fixture';
 import { allWorking, makeOff } from './patterns.fixture';
 
-function dayFrom(patterns: MonthlyPattern[], staff = buildRoster()) {
+function setup(patterns: MonthlyPattern[], staff = buildRoster()) {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
-  return resolveAttendance('2026-06-01', 1, 1, staff, index);
+  const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+  return { day, index };
 }
 
-function covererOf(day: ReturnType<typeof dayFrom>, outId: string): string | null {
-  for (const a of day.values()) if (a.providerCoverageIds.includes(outId)) return a.staffId;
-  return null;
+function covers(day: DayMap, covererId: string): string[] {
+  return day.get(covererId)?.providerCoverageIds ?? [];
 }
 
 describe('Step 3 — provider coverage', () => {
   const staff = buildRoster();
 
-  it('assigns an eligible in-office provider to cover an out provider', () => {
-    const day = dayFrom(makeOff(allWorking(staff), 'monica'));
-    assignCoverage(day, staff, {});
-    expect(covererOf(day, 'monica')).not.toBeNull();
+  it('assigns an out coverage-flagged provider to an in-office coverer', () => {
+    const { day, index } = setup(makeOff(allWorking(staff), 'monica')); // Monica (coverage) out
+    assignCoverage(day, staff, index, {});
+    const coveredBy = staff.find((s) => covers(day, s.id).includes('monica'));
+    expect(coveredBy).toBeDefined();
+    expect(index.get(coveredBy!.id)?.coverage).toBe(true);
+    expect(coveredBy!.id).not.toBe('monica');
   });
 
-  it('does not require coverage for Steph when out', () => {
-    const day = dayFrom(makeOff(allWorking(staff), 'steph'));
-    assignCoverage(day, staff, {});
-    expect(covererOf(day, 'steph')).toBeNull();
+  it('does not cover an out provider whose Coverage box is unchecked', () => {
+    // Steph has no coverage flag in the fixture.
+    const { day, index } = setup(makeOff(allWorking(staff), 'steph'));
+    assignCoverage(day, staff, index, {});
+    const anyCovers = staff.some((s) => covers(day, s.id).includes('steph'));
+    expect(anyCovers).toBe(false);
   });
 
-  it('does not require coverage for Shama when out', () => {
-    const day = dayFrom(makeOff(allWorking(staff), 'shama'));
-    assignCoverage(day, staff, {});
-    expect(covererOf(day, 'shama')).toBeNull();
-  });
-
-  it('never selects Steph as a coverer', () => {
-    // Everyone out except Steph and the out provider needing coverage.
+  it('leaves an out provider uncovered when no flagged coverer is in', () => {
+    // Monica out and every other coverage-flagged provider out too.
     let patterns = allWorking(staff);
-    for (const id of ['tricia', 'natalie', 'kendra', 'shama']) patterns = makeOff(patterns, id);
-    // Monica is out and needs coverage; only Steph remains in office among providers.
-    patterns = makeOff(patterns, 'monica');
-    const day = dayFrom(patterns);
-    assignCoverage(day, staff, {});
-    // Steph cannot cover -> Monica left uncovered.
-    expect(covererOf(day, 'monica')).toBeNull();
+    for (const id of ['monica', 'tricia', 'natalie', 'kendra']) patterns = makeOff(patterns, id);
+    const { day, index } = setup(patterns);
+    assignCoverage(day, staff, index, {});
+    const anyCovers = staff.some((s) => covers(day, s.id).includes('monica'));
+    expect(anyCovers).toBe(false); // -> warning elsewhere
   });
 
-  it('distributes coverage to the coverer with the lowest weekly count', () => {
-    const day = dayFrom(makeOff(allWorking(staff), 'monica'));
-    // Tricia (priority 1) already covered twice this week; Natalie once.
-    const weekly = { tricia: 2, natalie: 1 };
-    assignCoverage(day, staff, weekly);
-    // Lowest count among eligible is someone at 0 (e.g. kendra/shama) -> not tricia/natalie.
-    const coverer = covererOf(day, 'monica');
-    expect(coverer).not.toBe('tricia');
+  it('distributes coverage evenly via the running monthly count', () => {
+    // Two out providers, both covered the same in-office coverer would be unbalanced;
+    // with a shared count the second assignment goes to a different coverer.
+    let patterns = allWorking(staff);
+    patterns = makeOff(patterns, 'monica');
+    patterns = makeOff(patterns, 'natalie');
+    const { day, index } = setup(patterns);
+    const count: Record<string, number> = {};
+    assignCoverage(day, staff, index, count);
+    // Tricia (rank 1) and Kendra (rank 5) are the in-office coverage providers.
+    expect((count['tricia'] ?? 0) + (count['kendra'] ?? 0)).toBe(2);
+    expect(count['tricia']).toBe(1);
+    expect(count['kendra']).toBe(1);
+  });
+
+  it('carries the count across days so coverage balances over the month', () => {
+    const { day: day1, index } = setup(makeOff(allWorking(staff), 'monica'));
+    const count: Record<string, number> = {};
+    assignCoverage(day1, staff, index, count);
+    const first = staff.find((s) => covers(day1, s.id).includes('monica'))!.id;
+
+    const day2 = resolveAttendance('2026-06-02', 2, 2, staff, index);
+    // Re-mark Monica out on day 2 (same patterns, she's off all month here).
+    assignCoverage(day2, staff, index, count);
+    const second = staff.find((s) => covers(day2, s.id).includes('monica'))!.id;
+
+    expect(first).not.toBe(second); // the day-1 coverer is now higher-count, so day 2 picks another
   });
 });

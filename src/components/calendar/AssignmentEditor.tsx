@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Assignment, Staff } from '@/engine/types';
 import { LOCATION_LABEL, SELECTABLE_LOCATIONS } from '@/lib/locations';
+import { isSupportRole } from '@/lib/roles';
 import { Button } from '@/components/common/Button';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
   /** All assignments for the same day, to populate provider / target selects. */
   dayAssignments: Assignment[];
   allStaff: Staff[];
+  /** Providers flagged for coverage this month (both need and can provide it). */
+  coverageStaffIds: Set<string>;
   onSave: (next: Assignment) => void;
   onClose: () => void;
 }
@@ -20,6 +23,7 @@ export function AssignmentEditor({
   assignment,
   dayAssignments,
   allStaff,
+  coverageStaffIds,
   onSave,
   onClose,
 }: Props) {
@@ -29,13 +33,17 @@ export function AssignmentEditor({
   const present = new Set(dayAssignments.map((a) => a.staffId));
   const workingProviders = allStaff.filter((s) => s.receivesMas && present.has(s.id));
   const outProviders = allStaff.filter(
-    (s) => s.role === 'provider' && s.needsCoverageWhenOut && !present.has(s.id),
+    (s) => s.role === 'provider' && coverageStaffIds.has(s.id) && !present.has(s.id),
   );
   const pccTargets = allStaff.filter((s) => s.needsPcc && present.has(s.id));
 
-  const isMa = staff.role === 'ma' || staff.inMaPool;
-  const isProvider = staff.role === 'provider';
+  // MAs — and managers, manually — can be assigned under a provider.
+  const canBeMa = staff.role === 'ma' || staff.role === 'manager';
+  // Only coverage-flagged providers can be assigned to cover absent providers.
+  const canCover = staff.role === 'provider' && coverageStaffIds.has(staff.id);
   const isCoverer = staff.role === 'pcc' || staff.role === 'aesthetic_concierge';
+  // MAs and support roles can be MOD / handle shipping.
+  const canModOrShip = staff.role === 'ma' || isSupportRole(staff.role);
 
   const toggleId = (list: string[], id: string): string[] =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -68,7 +76,7 @@ export function AssignmentEditor({
           </select>
         </Field>
 
-        {staff.modPriority != null && (
+        {canModOrShip && (
           <Toggle
             label="Manager on Duty (MOD)"
             checked={draft.isMod}
@@ -76,7 +84,7 @@ export function AssignmentEditor({
           />
         )}
 
-        {isMa && (
+        {canBeMa && (
           <Field label="Assigned provider">
             <select
               className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
@@ -96,7 +104,7 @@ export function AssignmentEditor({
           </Field>
         )}
 
-        {isProvider && outProviders.length > 0 && (
+        {canCover && outProviders.length > 0 && (
           <Field label="Coverage (absent providers)">
             <div className="space-y-1">
               {outProviders.map((p) => (
@@ -126,11 +134,11 @@ export function AssignmentEditor({
           </Field>
         )}
 
-        {staff.canShipping && (
+        {canModOrShip && (
           <Toggle label="Shipping 📦" checked={draft.isShipping} onChange={(v) => set({ isShipping: v })} />
         )}
 
-        {staff.canSocialMedia && (
+        {staff.role === 'ma' && (
           <Toggle
             label="Social Media 📣"
             checked={draft.isSocialMedia}

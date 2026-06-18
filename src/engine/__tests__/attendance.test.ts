@@ -37,6 +37,17 @@ describe('Step 1 — attendance & locations', () => {
     expect(day.get('tricia')?.location).toBe('off');
   });
 
+  it("resolves an 'alternating' weekday to Kona or Waimea by week parity", () => {
+    const patterns = patch(allWorking(staff), 'tricia', {
+      usualWeekdays: [1],
+      locationByWeekday: { '1': 'alternating' },
+    });
+    const even = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 0);
+    expect(even.get('tricia')?.location).toBe('kona');
+    const odd = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 1);
+    expect(odd.get('tricia')?.location).toBe('waimea');
+  });
+
   it('excludes inactive staff entirely', () => {
     const roster = buildRoster().map((s) => (s.id === 'tricia' ? { ...s, active: false } : s));
     const day = resolveAttendance('2026-06-01', 1, 1, roster, index(allWorking(roster)));

@@ -13,27 +13,25 @@ export type Role =
 
 export type Location = 'kona' | 'waimea' | 'remote' | 'off';
 
+/**
+ * A monthly-setup weekday choice. Either a fixed {@link Location}, or
+ * `'alternating'` — the person switches between Kona and Waimea week to week.
+ * `'alternating'` is resolved to a concrete location per-day in Step 1 by week
+ * parity (even ISO week → Kona, odd → Waimea); it never reaches a daily assignment.
+ */
+export type WeekdayLocation = Location | 'alternating';
+
 export interface Staff {
   id: string;
   name: string;
   displayName: string;
   role: Role;
-  /** Providers only: fill / tie-break ordering. 1 = highest priority. */
-  priorityRank: number | null;
-  /** MOD eligibility & priority: 1 = Keahi, 2 = Sara, 3 = Reina. null = not MOD-eligible. */
-  modPriority: number | null;
-  inMaPool: boolean;
-  canSocialMedia: boolean;
+  /** Aesthetic concierge may act as a PCC. */
   canPcc: boolean;
-  canShipping: boolean;
   /** The 6 providers receive MAs. */
   receivesMas: boolean;
   /** Providers, estheticians, wellness need a PCC. */
   needsPcc: boolean;
-  /** Provider needs coverage when out. Steph & Shama = false; other providers = true. */
-  needsCoverageWhenOut: boolean;
-  /** May cover absent providers. Any provider except Steph = true. */
-  canCoverProviders: boolean;
   active: boolean;
 }
 
@@ -43,10 +41,28 @@ export interface MonthlyPattern {
   month: string;
   /** 1 = Mon .. 5 = Fri. */
   usualWeekdays: number[];
-  /** e.g. { "1": "kona", "2": "waimea" }. */
-  locationByWeekday: Record<string, Location>;
+  /** e.g. { "1": "kona", "2": "waimea", "3": "alternating" }. */
+  locationByWeekday: Record<string, WeekdayLocation>;
   /** Days of month (1-based), expanded from ranges like "1-3, 8-11". */
   requestedOffDays: number[];
+  /**
+   * Preferred assignment, by role:
+   *  - MA  → their default provider (a `receivesMas` staff id).
+   *  - PCC → their default coverage target (a `needsPcc` staff id).
+   * When the person and their target are both working at the SAME location that
+   * day, the engine assigns them together before any balancing. null = no default.
+   */
+  defaultTargetId: string | null;
+  /** Provider only: this provider should be filled to 2 MAs before even distribution. */
+  wantsTwoMas: boolean;
+  /** Provider only: both needs coverage when out and can cover others when in. */
+  coverage: boolean;
+  /** Provider only: fill-order rank (1 = highest). Defaults from the seeded priority. */
+  providerRank: number | null;
+  /** MOD rank (1 = highest). The highest-ranked working person becomes MOD. null = not MOD-eligible. */
+  modRank: number | null;
+  /** Shipping rank (1 = highest). The highest-ranked working person gets shipping. null = not eligible. */
+  shippingRank: number | null;
 }
 
 export interface Assignment {
@@ -87,9 +103,17 @@ export interface Warning {
 
 export interface GenerateMonthInput {
   staff: Staff[];
+  /**
+   * Patterns for every calendar month the rendered weeks touch. A month is shown
+   * as whole Mon–Fri weeks, so the trailing days spill into the next calendar
+   * month; include that month's patterns too. Each date resolves against the
+   * pattern whose `month` matches the date's calendar month.
+   */
   patterns: MonthlyPattern[];
   /** Any date within the target month. */
   month: Date;
+  /** ISO dates (yyyy-MM-dd) that are office holidays — no staff are scheduled. */
+  holidays?: Set<string>;
 }
 
 export interface GenerateMonthResult {

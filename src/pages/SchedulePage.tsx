@@ -9,25 +9,33 @@ import {
 import { generateMonth } from '@/engine';
 import type { Assignment, Staff } from '@/engine/types';
 import { useSession } from '@/hooks/useSession';
-import { useStaff } from '@/hooks/useStaff';
+import { useAllStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns } from '@/hooks/useMonthlyPatterns';
 import { useAssignments, useReplaceMonth, useUpsertAssignment } from '@/hooks/useAssignments';
 import { useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
+import { useMonthHolidays } from '@/hooks/useMonthHolidays';
 import { useRealtime } from '@/hooks/useRealtime';
-import { isoOf, weekdayRows } from '@/lib/dates';
+import { daysToIso, isoOf, monthLabel, nextMonth, sameCalendarMonth, weekdayRows } from '@/lib/dates';
+import { roleRank } from '@/lib/roles';
 import { buildDayModel } from '@/lib/dayModel';
 import { Spinner } from '@/components/common/Spinner';
+import { SignInDialog } from '@/components/common/SignInDialog';
 import { Toolbar } from '@/components/calendar/Toolbar';
-import { DayColumn } from '@/components/calendar/DayColumn';
+import { WeekGrid } from '@/components/calendar/WeekGrid';
 import { AssignmentEditor } from '@/components/calendar/AssignmentEditor';
 
 export function SchedulePage() {
-  const { isEditor, signOut } = useSession();
+  const { session, isEditor, signOut } = useSession();
+  const [showSignIn, setShowSignIn] = useState(false);
   const [month, setMonth] = useState(() => new Date());
 
-  const staffQuery = useStaff();
+  const staffQuery = useAllStaff();
   const patternsQuery = useMonthlyPatterns(month);
+  // Trailing days of the view spill into next month; pull its patterns + holidays too.
+  const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
+  const holidaysQuery = useMonthHolidays(month);
+  const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
   const assignmentsQuery = useAssignments(month);
   const dismissedQuery = useDismissedWarnings(month);
 
@@ -37,7 +45,10 @@ export function SchedulePage() {
 
   useRealtime(month);
 
+  // All staff (incl. inactive) drive the VIEW so historical months keep showing
+  // people who have since been deactivated; only active staff are scheduled.
   const staff = useMemo(() => staffQuery.data ?? [], [staffQuery.data]);
+  const activeStaff = useMemo(() => staff.filter((s) => s.active), [staff]);
   const assignments = useMemo(() => assignmentsQuery.data ?? [], [assignmentsQuery.data]);
   const dismissed = dismissedQuery.data ?? new Set<string>();
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
@@ -45,8 +56,28 @@ export function SchedulePage() {
     () => new Map((patternsQuery.data ?? []).map((p) => [p.staffId, p])),
     [patternsQuery.data],
   );
+  const nextPatternsByStaff = useMemo(
+    () => new Map((nextPatternsQuery.data ?? []).map((p) => [p.staffId, p])),
+    [nextPatternsQuery.data],
+  );
 
-  const warningsByDate = useMonthWarnings(assignments, staff, dismissed);
+  // Holiday dates (current + next month) as an ISO set, for greying days out.
+  const holidaySet = useMemo(
+    () =>
+      new Set([
+        ...daysToIso(month, holidaysQuery.data ?? []),
+        ...daysToIso(nextMonth(month), nextHolidaysQuery.data ?? []),
+      ]),
+    [month, holidaysQuery.data, nextHolidaysQuery.data],
+  );
+
+  const warningsByDate = useMonthWarnings(assignments, staff, dismissed, patternsByStaff);
+
+  // Providers flagged for coverage this month (both need and can provide it).
+  const coverageStaffIds = useMemo(
+    () => new Set([...patternsByStaff].filter(([, p]) => p.coverage).map(([id]) => id)),
+    [patternsByStaff],
+  );
 
   const assignmentsByDate = useMemo(() => {
     const map = new Map<string, Assignment[]>();
@@ -83,11 +114,30 @@ export function SchedulePage() {
 
   const handleGenerate = () => {
     const { assignments: generated } = generateMonth({
-      staff,
-      patterns: patternsQuery.data ?? [],
+      staff: activeStaff,
+      patterns: [...(patternsQuery.data ?? []), ...(nextPatternsQuery.data ?? [])],
       month,
+      holidays: holidaySet,
     });
     replaceMonth.mutate(generated);
+  };
+
+  const handleExport = async () => {
+    // Active staff + any deactivated person who has an assignment this month.
+    const assignedIds = new Set(assignments.map((a) => a.staffId));
+    const rows = staff
+      .filter((s) => s.active || assignedIds.has(s.id))
+      .sort(
+        (a, b) => roleRank(a.role) - roleRank(b.role) || a.displayName.localeCompare(b.displayName),
+      );
+    const { exportMonthToExcel } = await import('@/lib/exportMonth');
+    await exportMonthToExcel({
+      month,
+      monthLabel: monthLabel(month),
+      rows,
+      assignmentsByDate,
+      staffById,
+    });
   };
 
   if (staffQuery.isLoading || assignmentsQuery.isLoading) {
@@ -102,8 +152,11 @@ export function SchedulePage() {
         month={month}
         setMonth={setMonth}
         isEditor={isEditor}
+        signedIn={!!session}
         onGenerate={handleGenerate}
         generating={replaceMonth.isPending}
+        onExport={handleExport}
+        onSignIn={() => setShowSignIn(true)}
         onSignOut={signOut}
       />
 
@@ -116,25 +169,26 @@ export function SchedulePage() {
             </p>
           )}
 
-          {rows.map((week, i) => (
-            <section key={i} className="flex gap-3 overflow-x-auto pb-2">
-              {week.map((day) => {
-                const iso = isoOf(day);
-                const model = buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patternsByStaff);
-                return (
-                  <DayColumn
-                    key={iso}
-                    model={model}
-                    staffById={staffById}
-                    editable={isEditor}
-                    warnings={warningsByDate.get(iso) ?? []}
-                    onTileClick={(assignment, s) => isEditor && setEditing({ assignment, staff: s })}
-                    onDismissWarning={(w) => dismiss.mutate(w)}
-                  />
-                );
-              })}
-            </section>
-          ))}
+          {rows.map((week, i) => {
+            const dayModels = week.map((day) => {
+              const iso = isoOf(day);
+              // Trailing days belong to next month — resolve off/R-O against its patterns.
+              const patterns = sameCalendarMonth(day, month) ? patternsByStaff : nextPatternsByStaff;
+              return buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patterns, holidaySet.has(iso));
+            });
+            return (
+              <section key={i} className="overflow-x-auto pb-2">
+                <WeekGrid
+                  days={dayModels}
+                  staffById={staffById}
+                  editable={isEditor}
+                  warningsByDate={warningsByDate}
+                  onTileClick={(assignment, s) => isEditor && setEditing({ assignment, staff: s })}
+                  onDismissWarning={(w) => dismiss.mutate(w)}
+                />
+              </section>
+            );
+          })}
         </main>
       </DndContext>
 
@@ -145,6 +199,7 @@ export function SchedulePage() {
           assignment={editing.assignment}
           dayAssignments={assignmentsByDate.get(editing.assignment.date) ?? []}
           allStaff={staff}
+          coverageStaffIds={coverageStaffIds}
           onSave={(next) => {
             upsert.mutate(next);
             setEditing(null);
@@ -152,6 +207,8 @@ export function SchedulePage() {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {showSignIn && <SignInDialog onClose={() => setShowSignIn(false)} />}
     </div>
   );
 }

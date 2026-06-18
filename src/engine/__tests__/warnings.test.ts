@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveAttendance } from '../attendance';
 import { assignMod } from '../mod';
-import { assignCoverage } from '../coverage';
 import { assignMAs } from '../assignMAs';
 import { assignPCCs } from '../assignPCCs';
 import { computeWarnings } from '../warnings';
@@ -11,18 +10,18 @@ import { allWorking, makeOff } from './patterns.fixture';
 
 const staff = buildRoster();
 
-function fullDay(patterns: MonthlyPattern[]): Assignment[] {
+function fullDay(patterns: MonthlyPattern[]): { assignments: Assignment[]; index: Map<string, MonthlyPattern> } {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
   const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
-  assignMod(day, staff);
-  assignCoverage(day, staff, {});
-  assignMAs(day, staff);
-  assignPCCs(day, staff);
-  return [...day.values()];
+  assignMod(day, staff, index);
+  assignMAs(day, staff, index);
+  assignPCCs(day, staff, index);
+  return { assignments: [...day.values()], index };
 }
 
 function types(patterns: MonthlyPattern[]): WarningType[] {
-  return computeWarnings('2026-06-01', fullDay(patterns), staff).map((w) => w.type);
+  const { assignments, index } = fullDay(patterns);
+  return computeWarnings('2026-06-01', assignments, staff, index).map((w) => w.type);
 }
 
 describe('Step 9 — warnings', () => {
@@ -59,11 +58,11 @@ describe('Step 9 — warnings', () => {
   });
 
   it('warns on an MA assigned to a provider at a different location', () => {
-    const day = fullDay(allWorking(staff));
-    const ma = day.find((a) => a.assignedProviderId === 'tricia');
+    const { assignments, index } = fullDay(allWorking(staff));
+    const ma = assignments.find((a) => a.assignedProviderId === 'tricia');
     expect(ma).toBeDefined();
     ma!.location = ma!.location === 'kona' ? 'waimea' : 'kona';
-    const w = computeWarnings('2026-06-01', day, staff).map((x) => x.type);
+    const w = computeWarnings('2026-06-01', assignments, staff, index).map((x) => x.type);
     expect(w).toContain('ma_location_mismatch');
   });
 

@@ -24,6 +24,8 @@ export interface PersonView {
 
 export interface DayModel {
   date: string;
+  /** Office holiday: no staff scheduled, the calendar greys the column out. */
+  holiday: boolean;
   providers: ProviderView[];
   /** Standalone MAs not nested under a provider (e.g. the MOD, or unassigned). */
   standaloneMas: PersonView[];
@@ -55,13 +57,34 @@ function offAssignment(date: string, staffId: string): Assignment {
   };
 }
 
+function emptyModel(date: string): DayModel {
+  return {
+    date,
+    holiday: false,
+    providers: [],
+    standaloneMas: [],
+    managers: [],
+    pccs: [],
+    concierge: [],
+    estheticians: [],
+    wellness: [],
+    remote: [],
+    off: [],
+    requestedOff: [],
+  };
+}
+
 /** Group a single day's assignments into the calendar's role-based layout. */
 export function buildDayModel(
   date: string,
   dayAssignments: Assignment[],
   staff: Staff[],
   patternsByStaff: Map<string, MonthlyPattern>,
+  isHoliday = false,
 ): DayModel {
+  // On a holiday the office is closed: render no staff, just a greyed-out column.
+  if (isHoliday) return { ...emptyModel(date), holiday: true };
+
   const staffById = new Map(staff.map((s) => [s.id, s]));
   const byStaff = new Map(dayAssignments.map((a) => [a.staffId, a]));
 
@@ -74,29 +97,19 @@ export function buildDayModel(
     }
   }
 
-  const model: DayModel = {
-    date,
-    providers: [],
-    standaloneMas: [],
-    managers: [],
-    pccs: [],
-    concierge: [],
-    estheticians: [],
-    wellness: [],
-    remote: [],
-    off: [],
-    requestedOff: [],
-  };
+  const model = emptyModel(date);
 
   const dayOfMonth = getDate(parseISO(date));
   const weekday = getDay(parseISO(date)); // 0..6
 
-  const sortedStaff = [...staff].sort(
-    (a, b) => (a.priorityRank ?? 99) - (b.priorityRank ?? 99) || a.displayName.localeCompare(b.displayName),
-  );
+  // Constant display order (by name); role grouping comes from the calendar rows,
+  // not from any rank, so re-ranking a provider never reshuffles the calendar.
+  const sortedStaff = [...staff].sort((a, b) => a.displayName.localeCompare(b.displayName));
 
   for (const person of sortedStaff) {
-    if (!person.active) continue;
+    // Inactive (deactivated) people still appear on days they actually have an
+    // assignment, so historical months are preserved; otherwise they're omitted.
+    if (!person.active && !byStaff.has(person.id)) continue;
     const row = byStaff.get(person.id);
     const present = !!row && row.location !== 'off';
 

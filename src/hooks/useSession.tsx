@@ -10,9 +10,13 @@ interface SessionState {
   loading: boolean;
   appRole: AppRole | null;
   isEditor: boolean;
-  signInWithGitHub: () => Promise<void>;
+  /** Single editor login: a username (mapped to a Supabase email) + password. */
+  signInWithCredentials: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+// Usernames map to a Supabase email under this domain.
+const LOGIN_EMAIL_DOMAIN = 'drmonicascheel.com';
 
 const SessionContext = createContext<SessionState | undefined>(undefined);
 
@@ -55,11 +59,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loading,
       appRole,
       isEditor,
-      signInWithGitHub: async () => {
-        await supabase.auth.signInWithOAuth({
-          provider: 'github',
-          options: { redirectTo: window.location.origin },
-        });
+      signInWithCredentials: async (username: string, password: string) => {
+        const trimmed = username.trim();
+        const email = trimmed.includes('@')
+          ? trimmed.toLowerCase()
+          : `${trimmed.toLowerCase()}@${LOGIN_EMAIL_DOMAIN}`;
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       },
       signOut: async () => {
         await supabase.auth.signOut();

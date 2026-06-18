@@ -32,6 +32,12 @@ export function useSavePattern(month: Date) {
         usual_weekdays: pattern.usualWeekdays,
         location_by_weekday: pattern.locationByWeekday,
         requested_off_days: pattern.requestedOffDays,
+        default_target_id: pattern.defaultTargetId,
+        wants_two_mas: pattern.wantsTwoMas,
+        coverage: pattern.coverage,
+        provider_rank: pattern.providerRank,
+        mod_rank: pattern.modRank,
+        shipping_rank: pattern.shippingRank,
       };
       const { error } = await supabase
         .from('monthly_patterns')

@@ -79,7 +79,7 @@ An internal scheduling app for a dermatology practice with three locations. **On
 
 ### People
 **Providers (6)** — receive MAs:
-PA Tricia, PA Natalie, Dr. Monica, RN Steph, PA Kendra, Dr. Shama Brown.
+PA Tricia, PA Natalie, Dr. Monica, RN Steph, PA Kendra, Dr. Shama.
 *Priority order (MA fill + coverage tie-breaks):* Tricia → Natalie → Monica → Steph → Kendra → Shama.
 
 **Medical Assistants (10):** Reina, Sandra, Huaka, Sara I., Mya, Pu'uwai, Sena, Alana, Braelynn, Jordyn.
@@ -193,7 +193,7 @@ Resolve present/off for each staff member and set each present person's location
 - If none is working → **warning** (a MOD must always exist).
 
 ### Step 3 — Provider coverage
-- For each provider who is **OUT**, designate an in-office provider to cover their patients — **except RN Steph and Dr. Shama Brown, who never need coverage when out.**
+- For each provider who is **OUT**, designate an in-office provider to cover their patients — **except RN Steph and Dr. Shama, who never need coverage when out.**
 - **Eligible coverers:** any in-office provider **except RN Steph**. Dr. Shama may cover.
 - One coverer may cover **multiple** absent providers; coverers keep their own patients too.
 - **Even distribution:** track each eligible coverer's coverage count for the current week; assign new coverage to the coverer with the **lowest weekly count** (tie-break by provider priority order). **Reset every Monday.**

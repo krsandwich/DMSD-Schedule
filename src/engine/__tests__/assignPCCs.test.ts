@@ -77,6 +77,15 @@ describe('Step 5 — assign PCCs / aesthetic concierge', () => {
     expect(covered.has('monica')).toBe(true);
   });
 
+  it('covers a coverer’s default target first when same-location', () => {
+    // Christie defaults to Abby; both working at kona -> Christie should cover Abby.
+    const patterns = patch(allWorking(staff), 'christie', { defaultTargetId: 'abby' });
+    const index = new Map(patterns.map((p) => [p.staffId, p]));
+    const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+    assignPCCs(day, staff, index);
+    expect(day.get('christie')?.pccCoversIds).toContain('abby');
+  });
+
   it('exceeds the soft max only when no coverer has spare capacity', () => {
     // Only one PCC working; concierge off too -> that PCC must take all 9.
     let patterns = allWorking(staff);
