@@ -60,6 +60,30 @@ describe('Step 3 — provider coverage', () => {
     expect(count['kendra']).toBe(1);
   });
 
+  it('spreads same-day coverage one-per-coverer before doubling anyone up', () => {
+    // Even when the monthly count favors one coverer, two absentees on the same
+    // day go to two different coverers (one at a time).
+    let patterns = allWorking(staff);
+    patterns = makeOff(patterns, 'monica');
+    patterns = makeOff(patterns, 'natalie');
+    const { day, index } = setup(patterns);
+    // Pre-load Tricia's monthly count high; Kendra's at zero.
+    const count: Record<string, number> = { tricia: 5 };
+    assignCoverage(day, staff, index, count);
+    expect(covers(day, 'tricia').length).toBe(1);
+    expect(covers(day, 'kendra').length).toBe(1);
+  });
+
+  it('only doubles a coverer when absentees exceed available coverers', () => {
+    // Three coverage providers out (Tricia, Natalie, Monica); only Kendra is in,
+    // so Kendra must cover all three.
+    let patterns = allWorking(staff);
+    for (const id of ['tricia', 'natalie', 'monica']) patterns = makeOff(patterns, id);
+    const { day, index } = setup(patterns);
+    assignCoverage(day, staff, index, {});
+    expect(covers(day, 'kendra').sort()).toEqual(['monica', 'natalie', 'tricia']);
+  });
+
   it('carries the count across days so coverage balances over the month', () => {
     const { day: day1, index } = setup(makeOff(allWorking(staff), 'monica'));
     const count: Record<string, number> = {};

@@ -54,10 +54,17 @@ export async function exportMonthToExcel(opts: {
   rows: Staff[];
   assignmentsByDate: Map<string, Assignment[]>;
   staffById: Map<string, Staff>;
+  /** Weekly task numbers (#1–6) per week, aligned to the week order. */
+  weeklyTaskByWeek?: Map<string, number>[];
 }): Promise<void> {
-  const { month, monthLabel, rows, assignmentsByDate, staffById } = opts;
+  const { month, monthLabel, rows, assignmentsByDate, staffById, weeklyTaskByWeek = [] } = opts;
   const weeks = weekdayRows(month);
   const days = weeks.flat();
+
+  // The first (Monday) cell of each week carries that week's task numbers, so a
+  // task shows once per week next to the name rather than on every day cell.
+  const taskByFirstDayIso = new Map<string, Map<string, number>>();
+  weeks.forEach((wk, w) => taskByFirstDayIso.set(isoOf(wk[0]), weeklyTaskByWeek[w] ?? new Map()));
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(monthLabel);
@@ -121,7 +128,19 @@ export async function exportMonthToExcel(opts: {
     days.forEach((d, j) => {
       const a = (assignmentsByDate.get(isoOf(d)) ?? []).find((x) => x.staffId === s.id);
       const cell = row.getCell(2 + j);
-      cell.value = cellText(a, staffById);
+      const text = cellText(a, staffById);
+      // Weekly task #N (orange) on the first day of the week only.
+      const taskNo = taskByFirstDayIso.get(isoOf(d))?.get(s.id);
+      if (taskNo != null) {
+        cell.value = {
+          richText: [
+            { text: `#${taskNo}`, font: { bold: true, color: { argb: 'FFEA580C' } } },
+            ...(text ? [{ text: ` ${text}` }] : []),
+          ],
+        };
+      } else {
+        cell.value = text;
+      }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FILL[a?.location ?? 'off'] } };
       cell.alignment = { vertical: 'middle', wrapText: false };
       cell.border = border;

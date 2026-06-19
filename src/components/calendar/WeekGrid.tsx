@@ -11,6 +11,8 @@ interface Props {
   staffById: Map<string, Staff>;
   editable: boolean;
   warningsByDate: Map<string, Warning[]>;
+  /** Weekly task numbers (#1–6) for this week, keyed by MA staff id. */
+  taskByStaff: Map<string, number>;
   onTileClick: (assignment: Assignment, staff: Staff) => void;
   onDismissWarning: (w: Warning) => void;
 }
@@ -28,26 +30,12 @@ interface RoleRow {
 interface CellCtx {
   staffById: Map<string, Staff>;
   editable: boolean;
+  taskByStaff: Map<string, number>;
   onTileClick: (a: Assignment, s: Staff) => void;
 }
 
+// Providers render as one fixed row each (see WeekGrid) — not a generic RoleRow.
 const ROWS: RoleRow[] = [
-  {
-    key: 'providers',
-    label: 'Providers',
-    has: (d) => d.providers.length > 0,
-    cell: (d, ctx) =>
-      d.providers.map((p) => (
-        <ProviderCard
-          key={p.staff.id}
-          date={d.date}
-          view={p}
-          staffById={ctx.staffById}
-          editable={ctx.editable}
-          onTileClick={ctx.onTileClick}
-        />
-      )),
-  },
   personRow('mas', 'Medical Assistants', (d) => d.standaloneMas),
   covererRow('pccs', 'PCC', (d) => d.pccs),
   personRow('estheticians', 'Esthetician', (d) => d.estheticians),
@@ -64,11 +52,13 @@ export function WeekGrid({
   staffById,
   editable,
   warningsByDate,
+  taskByStaff,
   onTileClick,
   onDismissWarning,
 }: Props) {
-  const ctx: CellCtx = { staffById, editable, onTileClick };
+  const ctx: CellCtx = { staffById, editable, taskByStaff, onTileClick };
   const rows = ROWS.filter((r) => days.some((d) => r.has(d)));
+  const providers = orderedProviders(days);
 
   return (
     <div
@@ -87,19 +77,46 @@ export function WeekGrid({
         />
       ))}
 
-      {rows.map((row, ri) => (
+      {/* Providers: one fixed row each, so each provider holds the same grid
+          position all week (empty on days they're off — they show in Off below). */}
+      {providers.map((prov, pi) => (
+        <Fragment key={prov.id}>
+          <div className="pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            {pi === 0 ? 'Providers' : ''}
+          </div>
+          {days.map((d) => {
+            const view = d.providers.find((p) => p.staff.id === prov.id);
+            return (
+              <div key={d.date} className={`space-y-1 pt-2 ${d.holiday ? 'bg-gray-100' : ''}`}>
+                {d.holiday || !view ? null : (
+                  <ProviderCard
+                    date={d.date}
+                    view={view}
+                    staffById={staffById}
+                    editable={editable}
+                    taskByStaff={taskByStaff}
+                    onTileClick={onTileClick}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </Fragment>
+      ))}
+
+      {rows.map((row) => (
         <Fragment key={row.key}>
           <div
             className={`border-t border-gray-200 pt-2 text-[10px] font-semibold uppercase tracking-wide ${
-              ri === 0 ? 'border-transparent' : ''
-            } ${row.muted ? 'text-gray-300' : 'text-gray-400'}`}
+              row.muted ? 'text-gray-300' : 'text-gray-400'
+            }`}
           >
             {row.label}
           </div>
           {days.map((d) => (
             <div
               key={d.date}
-              className={`space-y-1 pt-2 ${ri === 0 ? '' : 'border-t border-gray-200'} ${
+              className={`space-y-1 border-t border-gray-200 pt-2 ${
                 d.holiday ? 'bg-gray-100' : ''
               }`}
             >
@@ -169,12 +186,14 @@ function ProviderCard({
   view,
   staffById,
   editable,
+  taskByStaff,
   onTileClick,
 }: {
   date: string;
   view: ProviderView;
   staffById: Map<string, Staff>;
   editable: boolean;
+  taskByStaff: Map<string, number>;
   onTileClick: (a: Assignment, s: Staff) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -208,6 +227,7 @@ function ProviderCard({
                 assignment={ma}
                 editable={editable}
                 draggableId={`ma:${date}:${ma.staffId}`}
+                taskNo={taskByStaff.get(ma.staffId)}
                 onClick={() => onTileClick(ma, maStaff)}
               />
             );
@@ -224,6 +244,16 @@ function ProviderCard({
       </div>
     </div>
   );
+}
+
+/** The week's providers in a stable order (by name), unioned across all days so
+ *  each provider gets one fixed row even on days they're off. */
+function orderedProviders(days: DayModel[]): Staff[] {
+  const byId = new Map<string, Staff>();
+  for (const d of days) {
+    for (const p of d.providers) if (!byId.has(p.staff.id)) byId.set(p.staff.id, p.staff);
+  }
+  return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 function personRow(
@@ -244,6 +274,7 @@ function personRow(
           staff={p.staff}
           assignment={p.assignment}
           editable={ctx.editable}
+          taskNo={ctx.taskByStaff.get(p.staff.id)}
           onClick={() => ctx.onTileClick(p.assignment, p.staff)}
         />
       )),

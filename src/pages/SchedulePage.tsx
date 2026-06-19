@@ -6,7 +6,9 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { getISOWeek } from 'date-fns';
 import { generateMonth } from '@/engine';
+import { assignWeeklyTasks } from '@/engine/weeklyTasks';
 import type { Assignment, Staff } from '@/engine/types';
 import { useSession } from '@/hooks/useSession';
 import { useAllStaff } from '@/hooks/useStaff';
@@ -89,6 +91,22 @@ export function SchedulePage() {
     return map;
   }, [assignments]);
 
+  // Weekly tasks (#1–6): rotate among MAs who aren't MOD-eligible and work at
+  // least one day that week (R/O the whole week → skipped). Deterministic by ISO
+  // week, recomputed from the current roster so new MAs join automatically.
+  const weeklyTasksFor = (week: Date[]): Map<string, number> => {
+    const modEligible = (id: string) =>
+      (patternsByStaff.get(id)?.modRank ?? null) !== null ||
+      (nextPatternsByStaff.get(id)?.modRank ?? null) !== null;
+    const worksThisWeek = (id: string) =>
+      week.some((d) => (assignmentsByDate.get(isoOf(d)) ?? []).some((a) => a.staffId === id));
+    const eligible = staff
+      .filter((s) => s.active && s.role === 'ma' && !modEligible(s.id) && worksThisWeek(s.id))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .map((s) => s.id);
+    return assignWeeklyTasks(getISOWeek(week[0]), eligible);
+  };
+
   const [editing, setEditing] = useState<{ assignment: Assignment; staff: Staff } | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -137,6 +155,7 @@ export function SchedulePage() {
       rows,
       assignmentsByDate,
       staffById,
+      weeklyTaskByWeek: weekdayRows(month).map(weeklyTasksFor),
     });
   };
 
@@ -176,6 +195,7 @@ export function SchedulePage() {
               const patterns = sameCalendarMonth(day, month) ? patternsByStaff : nextPatternsByStaff;
               return buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patterns, holidaySet.has(iso));
             });
+            const taskByStaff = weeklyTasksFor(week);
             return (
               <section key={i} className="overflow-x-auto pb-2">
                 <WeekGrid
@@ -183,6 +203,7 @@ export function SchedulePage() {
                   staffById={staffById}
                   editable={isEditor}
                   warningsByDate={warningsByDate}
+                  taskByStaff={taskByStaff}
                   onTileClick={(assignment, s) => isEditor && setEditing({ assignment, staff: s })}
                   onDismissWarning={(w) => dismiss.mutate(w)}
                 />

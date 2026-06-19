@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DMSD Scheduler — User Guide</title>
+<style>
+  @page { size: Letter; margin: 16mm 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: #1f2937; font-size: 11pt; line-height: 1.5; margin: 0;
+  }
+  h1 { font-size: 26pt; margin: 0 0 2px; color: #111827; }
+  .subtitle { color: #6b7280; font-size: 12pt; margin: 0 0 22px; }
+  h2 {
+    font-size: 15pt; color: #111827; margin: 26px 0 8px;
+    padding-bottom: 4px; border-bottom: 2px solid #e5e7eb;
+    page-break-after: avoid;
+  }
+  h3 { font-size: 12pt; margin: 14px 0 4px; color: #374151; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .lead { font-size: 11.5pt; color: #374151; }
+  .card {
+    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 10px 14px; margin: 10px 0;
+  }
+  .tip {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 10px 14px; margin: 12px 0; font-size: 10.5pt;
+  }
+  .tip b { color: #92400e; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 10pt; }
+  th, td { border: 1px solid #e5e7eb; padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; margin-right: 5px; border: 1px solid rgba(0,0,0,.15); }
+  .kona { background: #8b5cf6; } .waimea { background: #3b82f6; }
+  .remote { background: #22c55e; } .off { background: #d1d5db; }
+  .badge {
+    display: inline-block; background: #1f2937; color: #fff; border-radius: 4px;
+    font-size: 8.5pt; font-weight: 700; padding: 1px 5px; vertical-align: middle;
+  }
+  .step { font-weight: 700; color: #2563eb; }
+  section { page-break-inside: avoid; }
+  .footer { margin-top: 26px; color: #9ca3af; font-size: 9pt; text-align: center; }
+</style>
+</head>
+<body>
+
+  <h1>DMSD Scheduler</h1>
+  <p class="subtitle">User Guide — how to build and share the office calendar</p>
+
+  <p class="lead">This guide walks you through setting up a month, generating the
+  staff calendar, adjusting it, and sharing it. The office runs
+  <b>Monday&ndash;Friday only</b>.</p>
+
+  <section>
+    <h2>1. Two ways to use the app</h2>
+    <table>
+      <tr><th>Role</th><th>What they can do</th></tr>
+      <tr><td><b>Editor</b></td><td>Set monthly patterns, generate the calendar, drag and edit assignments, and manage the staff roster. There is one editor.</td></tr>
+      <tr><td><b>Viewer</b></td><td>See the live calendar, move between months, and export to Excel — but cannot change anything. No sign-in needed.</td></tr>
+    </table>
+    <p>A chip in the top-right corner shows your mode: a green <b>Editor</b> chip
+    or a grey <b>Viewer</b> chip.</p>
+    <h3>The basic flow</h3>
+    <ul>
+      <li><span class="step">1.</span> In <b>Monthly Setup</b>, enter who works which days, where, plus time off and holidays.</li>
+      <li><span class="step">2.</span> Click <b>Generate month</b> to auto-build the calendar.</li>
+      <li><span class="step">3.</span> Drag and click tiles to fine-tune, watching the warning flags.</li>
+      <li><span class="step">4.</span> <b>Export to Excel</b> to print or email it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. Signing in (Editor)</h2>
+    <ul>
+      <li>Click <b>Sign in</b> at the top-right of the calendar.</li>
+      <li>Enter your <b>username</b> and <b>password</b>. You only type the username —
+      the rest of the email address is added for you automatically.</li>
+      <li>Once signed in, the editing buttons (<b>Roster</b>, <b>Monthly setup</b>,
+      <b>Generate month</b>) appear and the chip turns green.</li>
+    </ul>
+    <p>Click <b>Sign out</b> anytime to return to read-only view. Viewers don't need
+    to sign in at all — they just open the site.</p>
+  </section>
+
+  <section>
+    <h2>3. Reading the calendar</h2>
+    <p>The calendar shows <b>one week per row</b>, scrolling down through the month.
+    Each day is a column, and staff are grouped into rows by role.</p>
+
+    <h3>Location colors</h3>
+    <p>Every tile is colored by where that person is that day (the color key is in the top bar):</p>
+    <ul>
+      <li><span class="dot kona"></span><b>Kona</b> (purple)</li>
+      <li><span class="dot waimea"></span><b>Waimea</b> (blue)</li>
+      <li><span class="dot remote"></span><b>Remote</b> (green)</li>
+      <li><span class="dot off"></span><b>Off / R-O</b> (grey) — not working, or requested off</li>
+    </ul>
+
+    <h3>Tile badges</h3>
+    <ul>
+      <li><span class="badge">MOD</span> — Manager on Duty that day.</li>
+      <li>&#128230; — handling <b>Shipping</b>.</li>
+      <li>&#128227; — assigned to <b>Social Media</b>.</li>
+      <li>&#128260; <i>Name(s)</i> — who this person <b>covers</b> (an absent provider, or a PCC's targets).</li>
+      <li>&#128396;&#65039; <i>text</i> — a <b>custom note</b> was added for that day.</li>
+    </ul>
+
+    <h3>Medical Assistants &amp; holidays</h3>
+    <ul>
+      <li>MAs appear <b>nested under their provider</b> — each provider has up to two MA slots.</li>
+      <li>A <b>holiday</b> shows as a greyed-out column with a <b>Holiday</b> tag and no staff.</li>
+      <li>If a day has a problem, an amber <b>&#9888; warning</b> chip appears in its header (see section 7).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Monthly Setup (Editor)</h2>
+    <p>Click <b>Monthly setup</b>, then use the <b>&lsaquo; Month &rsaquo;</b> arrows to
+    pick the month you're editing.</p>
+
+    <h3>Holidays</h3>
+    <p>The amber <b>Holidays</b> box at the top takes a day list like <code>1, 4-5</code>.
+    Any weekday you list becomes <b>office closed</b> — no staff, greyed out. Leave it
+    blank for none.</p>
+
+    <h3>Each person's row</h3>
+    <ul>
+      <li><b>Mon&ndash;Fri columns</b> — set the location for each weekday:
+        <b>&mdash;</b> (not working), <b>Kona</b>, <b>Waimea</b>, <b>Remote</b>, or
+        <b>Kona / Waimea (alternating)</b> which switches week to week.</li>
+      <li><b>Requested off</b> — time-off days as ranges, e.g. <code>1-3, 8-11</code>.</li>
+      <li><b>Defaults &amp; ranks</b> — extra options depending on role:
+        <ul>
+          <li><b>Providers:</b> <i>Priority&nbsp;#</i> (fill order), <b>2 MAs</b> (give this provider a second MA), <b>Coverage</b> (needs coverage when out / can cover others).</li>
+          <li><b>MAs &amp; support staff:</b> a default <b>Provider/target</b> pairing, plus <b>MOD&nbsp;#</b> and <b>&#128230;&nbsp;#</b> ranks (lower number = picked first).</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Carry forward &amp; save</h3>
+    <ul>
+      <li><b>Carry forward</b> copies the previous month's weekday patterns, locations,
+      and ranks into this month (all still editable). <b>Time off does not carry over</b> — re-enter it each month.</li>
+      <li><b>Save all</b> stores everything for the month.</li>
+    </ul>
+    <div class="tip"><b>Tip:</b> Enter the first month by hand. After that,
+    <b>Carry forward</b> saves most of the typing each month.</div>
+  </section>
+
+  <section>
+    <h2>5. Generating the month</h2>
+    <p>On the calendar, with the right month selected, click <b>Generate month</b>.
+    The app fills in every weekday automatically:</p>
+    <ul>
+      <li>Sets each person's attendance and location (holidays are skipped).</li>
+      <li>Picks one <b>Manager on Duty</b> per day.</li>
+      <li>Assigns <b>provider coverage</b> for anyone out who needs it.</li>
+      <li>Gives every working provider an <b>MA</b> (and a second to "2 MAs" providers).</li>
+      <li>Assigns <b>PCCs / concierge</b> to cover providers, estheticians, and wellness.</li>
+      <li>Sets <b>shipping</b>.</li>
+    </ul>
+    <div class="tip"><b>Important:</b> Generating <b>replaces the whole month</b>. It
+    rebuilds every day from your setup, so any by-hand edits for that month are
+    cleared. Set up first, generate once, then fine-tune by hand.</div>
+  </section>
+
+  <section>
+    <h2>6. Adjusting the calendar by hand (Editor)</h2>
+    <p>After generating, you can change anything. The warnings update instantly as you go.</p>
+    <h3>Drag an MA to another provider</h3>
+    <p>Grab a <b>Medical Assistant tile</b> and drop it onto a different
+    <b>provider card</b> to reassign them.</p>
+    <h3>Click any tile to open the editor</h3>
+    <p>Click a tile to open the side panel, where you can set:</p>
+    <ul>
+      <li><b>Location</b> (Kona / Waimea / Remote / Off)</li>
+      <li><b>Manager on Duty</b> toggle</li>
+      <li><b>Assigned provider</b> (for MAs)</li>
+      <li><b>Coverage</b> — which absent providers this provider covers</li>
+      <li><b>PCC covers</b> — which targets a PCC/concierge coordinates</li>
+      <li><b>Shipping &#128230;</b> and <b>Social Media &#128227;</b> toggles</li>
+      <li><b>Custom note</b> — free text shown on the tile</li>
+    </ul>
+    <p>Click <b>Save</b> to apply or <b>Cancel</b> to discard.</p>
+  </section>
+
+  <section>
+    <h2>7. Warnings</h2>
+    <p>Warnings flag likely problems but never block you. They update live, and you
+    can dismiss one by clicking the <b>&times;</b> next to it.</p>
+    <table>
+      <tr><th>Warning</th><th>Meaning</th></tr>
+      <tr><td>No MOD</td><td>No Manager on Duty is set that day.</td></tr>
+      <tr><td>Provider has 0 MAs</td><td>A working provider has no MA.</td></tr>
+      <tr><td>Provider has too many MAs</td><td>A provider has more than 2 MAs.</td></tr>
+      <tr><td>Out provider has no coverage</td><td>An absent provider who needs coverage has nobody covering.</td></tr>
+      <tr><td>MA location mismatch</td><td>An MA is under a provider at a different location.</td></tr>
+      <tr><td>Target has no PCC coverage</td><td>A provider/esthetician/wellness has no same-location PCC.</td></tr>
+    </table>
+    <p>Fix a warning by editing the relevant tiles, or dismiss it if it's acceptable.</p>
+  </section>
+
+  <section>
+    <h2>8. Managing the roster (Editor)</h2>
+    <p>Click <b>Roster</b> to manage staff.</p>
+    <ul>
+      <li><b>Add a person</b> — type a name, pick a role, click <b>+ Add person</b>.</li>
+      <li><b>Deactivate</b> — removes someone from future schedules but keeps their history.</li>
+      <li><b>Show inactive</b> — toggle to reveal deactivated people. For each, you can:
+        <ul>
+          <li><b>Reactivate</b> — bring them back into scheduling, or</li>
+          <li><b>Delete</b> — permanently remove the person and all of their history (you'll be asked to confirm; this can't be undone).</li>
+        </ul>
+      </li>
+    </ul>
+    <div class="tip"><b>Tip:</b> Deactivate is the safe, reversible choice. Only
+    <b>Delete</b> when you're sure you'll never need that person's past schedule.</div>
+  </section>
+
+  <section>
+    <h2>9. Exporting to Excel</h2>
+    <p>Click <b>Export Excel</b> (available to everyone, including Viewers) to download
+    a spreadsheet of the current month, laid out like the calendar with color-coded
+    locations and all the badges. Handy for printing or emailing.</p>
+  </section>
+
+  <section>
+    <h2>10. Quick tips</h2>
+    <ul>
+      <li>See <b>&ldquo;No schedule generated yet&rdquo;</b>? As Editor, set up the month and click <b>Generate month</b>.</li>
+      <li>Everyone showing as <b>Off</b>? That month's setup is empty — fill it in, save, then generate.</li>
+      <li>Use the <b>&lsaquo; &rsaquo;</b> arrows in the top bar to move between months.</li>
+      <li>Lost by-hand edits usually mean someone re-ran <b>Generate month</b> — it rebuilds the whole month.</li>
+    </ul>
+  </section>
+
+  <p class="footer">DMSD Scheduler — User Guide</p>
+
+</body>
+</html>
