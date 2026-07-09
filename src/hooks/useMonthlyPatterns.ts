@@ -32,6 +32,8 @@ export function useSavePattern(month: Date) {
         usual_weekdays: pattern.usualWeekdays,
         location_by_weekday: pattern.locationByWeekday,
         requested_off_days: pattern.requestedOffDays,
+        additional_days: pattern.additionalDays,
+        additional_days_location: pattern.additionalDaysLocation,
         default_target_id: pattern.defaultTargetId,
         wants_two_mas: pattern.wantsTwoMas,
         coverage: pattern.coverage,

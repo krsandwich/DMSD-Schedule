@@ -86,6 +86,11 @@ function LocationLegend() {
           {LOCATION_LABEL[loc]}
         </span>
       ))}
+      {/* Requested off (R/O) is not a location — it renders pink (see StaffTile). */}
+      <span className="flex items-center gap-1 text-xs text-gray-600">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-pink-400" />
+        Request Off (R/O)
+      </span>
     </div>
   );
 }

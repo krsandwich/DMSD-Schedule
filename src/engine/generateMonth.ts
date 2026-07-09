@@ -1,11 +1,11 @@
 import {
   addDays,
+  differenceInCalendarDays,
   eachDayOfInterval,
   endOfMonth,
   format,
   getDate,
   getDay,
-  getISOWeek,
   startOfMonth,
   subDays,
 } from 'date-fns';
@@ -42,7 +42,8 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
   // Running coverage count per coverer, for even distribution across the month.
   const coverageCount: Record<string, number> = {};
 
-  const days = eachDayOfInterval(monthWeekInterval(month));
+  const interval = monthWeekInterval(month);
+  const days = eachDayOfInterval(interval);
 
   for (const date of days) {
     const weekday = getDay(date); // 0 = Sun .. 6 = Sat
@@ -52,14 +53,17 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
     if (holidays?.has(isoDate)) continue; // office closed: no staff, no warnings
 
     const dayOfMonth = getDate(date);
-    // Parity of the ISO week number drives 'alternating' (Kona/Waimea) locations,
-    // so the alternation is continuous across month boundaries.
-    const weekParity = (getISOWeek(date) % 2) as 0 | 1;
+    // 'alternating' locations switch every two weeks within the month view: the
+    // week index (0-based from the view's first Monday) grouped into two-week
+    // blocks, then alternated. Weeks 0–1 → block 0, weeks 2–3 → block 1, weeks
+    // 4–5 → block 0, and so on.
+    const weekIndex = Math.floor(differenceInCalendarDays(date, interval.start) / 7);
+    const weekBlock = (Math.floor(weekIndex / 2) % 2) as 0 | 1;
 
     const patternsByStaff = patternsByMonth.get(format(startOfMonth(date), 'yyyy-MM-dd')) ?? EMPTY;
 
     // Step 1 — Attendance & locations.
-    const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekParity);
+    const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekBlock);
     // Step 2 — MOD.
     assignMod(day, staff, patternsByStaff);
     // Step 3 — Provider coverage (even across the month).

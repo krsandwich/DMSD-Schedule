@@ -53,6 +53,8 @@ create table monthly_patterns (
   usual_weekdays      int[] not null default '{}',
   location_by_weekday jsonb not null default '{}',
   requested_off_days  int[] not null default '{}',
+  additional_days          int[] not null default '{}',             -- force-work days (inverse of requested off)
+  additional_days_location text,                                    -- location for additional_days ('kona'|'waimea'|'remote'|'alternating'|'waimea_kona')
   default_target_id   uuid references staff(id) on delete set null, -- MA->provider, PCC->target
   wants_two_mas       boolean not null default false,               -- provider filled to 2 MAs first
   coverage            boolean not null default false,               -- provider needs + provides coverage
@@ -75,6 +77,7 @@ create table daily_assignments (
   is_shipping           boolean not null default false,
   is_social_media       boolean not null default false,
   custom_text           text,
+  weekly_task_no        int,
   unique (date, staff_id)
 );
 

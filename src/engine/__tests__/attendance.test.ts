@@ -37,15 +37,59 @@ describe('Step 1 — attendance & locations', () => {
     expect(day.get('tricia')?.location).toBe('off');
   });
 
-  it("resolves an 'alternating' weekday to Kona or Waimea by week parity", () => {
+  it("resolves an 'alternating' (Kona / Waimea) weekday by two-week block", () => {
     const patterns = patch(allWorking(staff), 'tricia', {
       usualWeekdays: [1],
       locationByWeekday: { '1': 'alternating' },
     });
-    const even = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 0);
-    expect(even.get('tricia')?.location).toBe('kona');
-    const odd = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 1);
-    expect(odd.get('tricia')?.location).toBe('waimea');
+    const block0 = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 0);
+    expect(block0.get('tricia')?.location).toBe('kona');
+    const block1 = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 1);
+    expect(block1.get('tricia')?.location).toBe('waimea');
+  });
+
+  it("resolves a 'waimea_kona' weekday as the reverse by two-week block", () => {
+    const patterns = patch(allWorking(staff), 'tricia', {
+      usualWeekdays: [1],
+      locationByWeekday: { '1': 'waimea_kona' },
+    });
+    const block0 = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 0);
+    expect(block0.get('tricia')?.location).toBe('waimea');
+    const block1 = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns), 1);
+    expect(block1.get('tricia')?.location).toBe('kona');
+  });
+
+  it('works an additional day the person does not usually work, at its location', () => {
+    // Tricia works Tue–Fri only; day 1 is a Monday, added back at Waimea.
+    const patterns = patch(allWorking(staff), 'tricia', {
+      usualWeekdays: [2, 3, 4, 5],
+      additionalDays: [1],
+      additionalDaysLocation: 'waimea',
+    });
+    const day = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns)); // Monday
+    expect(day.get('tricia')?.location).toBe('waimea');
+    expect(isWorking(day, 'tricia')).toBe(true);
+  });
+
+  it('overrides requested-off with an additional working day', () => {
+    const patterns = patch(allWorking(staff), 'tricia', {
+      requestedOffDays: [1],
+      additionalDays: [1],
+      additionalDaysLocation: 'kona',
+    });
+    const day = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns));
+    expect(day.get('tricia')?.location).toBe('kona');
+    expect(isWorking(day, 'tricia')).toBe(true);
+  });
+
+  it('ignores additional days when no location is set', () => {
+    const patterns = patch(allWorking(staff), 'tricia', {
+      usualWeekdays: [2, 3, 4, 5],
+      additionalDays: [1],
+      additionalDaysLocation: 'off',
+    });
+    const day = resolveAttendance('2026-06-01', 1, 1, staff, index(patterns)); // Monday
+    expect(isWorking(day, 'tricia')).toBe(false);
   });
 
   it('excludes inactive staff entirely', () => {

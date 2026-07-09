@@ -13,9 +13,20 @@ interface Props {
   covers?: Staff[];
   /** Weekly task number (#1–6) for eligible MAs; shown as a badge. */
   taskNo?: number;
+  /** Requested-off (R/O): render pink to distinguish from plain Off (grey). */
+  requestedOff?: boolean;
 }
 
-export function StaffTile({ staff, assignment, editable, draggableId, onClick, covers, taskNo }: Props) {
+export function StaffTile({
+  staff,
+  assignment,
+  editable,
+  draggableId,
+  onClick,
+  covers,
+  taskNo,
+  requestedOff,
+}: Props) {
   const drag = useDraggable({
     id: draggableId ?? `static:${assignment.date}:${staff.id}`,
     data: { assignment, staff },
@@ -33,14 +44,18 @@ export function StaffTile({ staff, assignment, editable, draggableId, onClick, c
       {...(draggableId && editable ? { ...drag.listeners, ...drag.attributes } : {})}
       onClick={onClick}
       className={`w-full overflow-hidden rounded border px-1.5 py-1 text-xs leading-tight ${
-        LOCATION_TILE[assignment.location]
+        requestedOff ? 'border-pink-300 bg-pink-100 text-pink-700' : LOCATION_TILE[assignment.location]
       } ${editable ? 'cursor-pointer hover:ring-1 hover:ring-blue-400' : ''} ${
         drag.isDragging ? 'opacity-50' : ''
       }`}
       title={[staff.displayName, assignment.customText].filter(Boolean).join(' — ')}
     >
       <div className="flex items-center gap-1">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${LOCATION_DOT[assignment.location]}`} />
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            requestedOff ? 'bg-pink-400' : LOCATION_DOT[assignment.location]
+          }`}
+        />
         <span className="truncate font-medium text-gray-800">{staff.displayName}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {taskNo != null && (

@@ -75,7 +75,10 @@ An internal scheduling app for a dermatology practice with three locations. **On
 | `kona` | Purple |
 | `waimea` | Blue |
 | `remote` | Green |
-| `off` (Off / R/O = Request Off) | Light grey |
+| `off` (not scheduled to work) | Light grey |
+| Request Off (R/O) — scheduled that weekday but requested off | Pink |
+
+*(R/O is not a distinct `location` value; it's a display distinction. A person lands in the pink **Request Off (R/O)** row only when the day is one of their usual weekdays **and** in their `requested_off_days`; otherwise a non-working day is plain grey **Off**.)*
 
 ### People
 **Providers (6)** — receive MAs:
@@ -196,6 +199,8 @@ Run per weekday (Mon–Fri). A person **works** that day if it's one of their `u
 
 ### Step 1 — Attendance & locations
 Resolve present/off for each staff member and set each present person's location. (Holiday weekdays are skipped before this step.)
+- **Additional days (force-work):** the inverse of requested-off. A day-of-month in `additional_days` makes the person work at `additional_days_location`, **overriding** both their usual weekday pattern and any requested-off for that day. `null` / `off` location = no effect.
+- **Alternating locations:** a weekday set to `alternating` (Kona / Waimea) or `waimea_kona` (Waimea / Kona) switches every **two weeks within the month view** — weeks 1–2 = the first location, weeks 3–4 = the second, then the two-week block repeats (so a 5th week returns to the first). The block index resets at each month's first Monday. *(Changed from the earlier continuous weekly ISO-parity rotation per client request.)*
 
 ### Step 2 — MOD (exactly one per day)
 - Choose the highest-priority **working** MOD-eligible person: Keahi → Sara → Reina.
@@ -249,7 +254,8 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
 - **Layout:** monthly view, **one week per row**, vertical scroll between weeks. Months render as whole Mon–Fri weeks (see §6), so the last row may spill into the next calendar month.
 - Day cells group staff by role; tiles colored by location; MA slots nested under their provider.
 - **Holiday** weekdays render as a greyed-out column with a "Holiday" badge and no staff.
-- Tiles surface: location color, 📦 shipping, MOD badge, coverage badge, custom-text indicator.
+- Tiles surface: location color, 📦 shipping, 📣 social media, MOD badge, coverage badge, custom-text indicator, and (for MAs) a `#N` **weekly task** badge. Request-off tiles render pink (see §4).
+- **Weekly MA tasks (`#1–6`):** a deterministic rotation among MAs who work at least one day that week and are not MOD-eligible, keyed by ISO week and recomputed from the roster (`src/engine/weeklyTasks.ts`), so new MAs join automatically. It's **derived, not stored** — but the Editor can override a person's number in the tile editor; the override is persisted per-assignment (`weekly_task_no`) and pinned across that whole week. **Generate month** clears overrides.
 - **Editor** can drag-and-drop to reassign across providers/locations/MOD/coverage/PCC targets; every drop re-runs validation (§9) and refreshes warnings live. **Viewers** get the same view, read-only.
 - Use Supabase Realtime so Viewers reflect Editor edits without refreshing.
 
@@ -258,8 +264,8 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
 ## 8. Monthly setup UI
 
 - A **Holidays** callout at the top: day-of-month ranges like `1, 4-5` (same parser), saved per month to `monthly_holidays`.
-- Per person: pick `usual_weekdays` and a location per selected weekday; enter requested time off as ranges like `1-3, 8-11` (parse → expanded `int[]`); plus per-row defaults/ranks (default provider/target, "2 MAs", coverage, provider/MOD/shipping ranks).
-- **First month is entered manually.** Each later month auto-populates `usual_weekdays` + `location_by_weekday` from the prior month (editable); `requested_off_days` does **not** carry over.
+- Per person: pick `usual_weekdays` and a location per selected weekday (Kona / Waimea / Remote, or the two-week alternating choices **Kona / Waimea** and **Waimea / Kona**); enter requested time off as ranges like `1-3, 8-11` (parse → expanded `int[]`); enter **Additional days** (same range parser) plus an **Additional days location**; plus per-row defaults/ranks (default provider/target, "2 MAs", coverage, provider/MOD/shipping ranks).
+- **First month is entered manually.** Later months copy `usual_weekdays` + `location_by_weekday` + defaults/ranks from the prior month via the explicit **Carry forward** button (all editable). `requested_off_days` **and** `additional_days` / `additional_days_location` are month-specific and do **not** carry over.
 - **Roster page:** add staff, deactivate/reactivate, and **permanently delete** inactive staff (erases their assignments + patterns; clears references from other rows).
 
 ---
@@ -290,6 +296,9 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
   6. MA distribution: one per provider (priority order), a second only for "2 MAs"-flagged providers; surplus MAs are left unassigned (changed per client request — was "Tricia gets 2, then balance evenly").
   7. Months span whole Mon–Fri weeks (week → month-of-its-Monday); trailing days resolve against the next month's patterns.
   8. Holidays (`monthly_holidays`) skip a weekday entirely: no staff, no warnings, greyed out.
+  9. `alternating` / `waimea_kona` switch location in **two-week blocks within the month** (resets each month), not by continuous weekly parity.
+  10. `additional_days` force a person to work (at `additional_days_location`), overriding usual weekdays and requested-off; neither `additional_days` nor `requested_off_days` carries forward between months.
+  11. Weekly MA task `#N` is derived per week; a per-assignment `weekly_task_no` override pins it and is wiped by re-generate.
 
 ---
 
@@ -312,11 +321,12 @@ user in Supabase Auth. Temporarily, any signed-in user is treated as the editor
 (`0003_all_editors.sql` / `setup_all.sql`); the original per-`app_role` gating still lives in
 `0002_rls.sql`.
 
-**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0012_holidays.sql`);
+**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0014_additional_days.sql`);
 roster is seeded by `/supabase/seed.sql`. `setup_all.sql` is a single idempotent
 drop-and-recreate of the whole schema (handy for the dashboard SQL Editor). Apply migrations with
-the Supabase CLI (`supabase db push`) — **new tables (e.g. `monthly_holidays`) must be applied to
-the DB before their features work.** Regenerate `src/lib/database.types.ts` with
+the Supabase CLI (`supabase db push`) — **new columns/tables must be applied to
+the DB before their features work** (e.g. `0013` adds `daily_assignments.weekly_task_no`; `0014`
+adds `monthly_patterns.additional_days` + `additional_days_location`). Regenerate `src/lib/database.types.ts` with
 `supabase gen types typescript` once the project is linked — note that table Row types must be
 `type` aliases, not `interface`s, or the typed client silently degrades to `never`.
 
@@ -327,8 +337,12 @@ the DB before their features work.** Regenerate `src/lib/database.types.ts` with
   dates and skipped during generation; `buildDayModel` greys them in the calendar.
 - The engine is data-driven from per-month `monthly_patterns` rows, not hard-coded names: each row
   carries `coverage` (provider both needs + can provide coverage), `wants_two_mas`,
-  `default_target_id` (MA→provider / PCC→target), and `provider_rank` / `mod_rank` /
-  `shipping_rank`. Earlier person-specific staff flags were dropped (`0008`–`0010`).
+  `default_target_id` (MA→provider / PCC→target), `provider_rank` / `mod_rank` /
+  `shipping_rank`, and `additional_days` + `additional_days_location` (force-work override).
+  Earlier person-specific staff flags were dropped (`0008`–`0010`).
+- `daily_assignments.weekly_task_no` is a nullable per-assignment override for the derived
+  weekly `#N` badge; `SchedulePage` overlays it onto the rotation in `weeklyTasksFor` so a value on
+  any day of the week pins that MA's number for the whole week (calendar + Excel export).
 - `computeWarnings` (`src/engine/warnings.ts`) is the single source of validation — it runs both
   during generation and live after every drag/drop or edit. The UI recomputes warnings from cached
   assignments via `useMonthWarnings`, so manual edits re-validate for free.

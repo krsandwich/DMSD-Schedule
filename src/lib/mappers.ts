@@ -23,6 +23,8 @@ export function patternFromRow(r: MonthlyPatternRow): MonthlyPattern {
     usualWeekdays: r.usual_weekdays,
     locationByWeekday: r.location_by_weekday,
     requestedOffDays: r.requested_off_days,
+    additionalDays: r.additional_days,
+    additionalDaysLocation: r.additional_days_location,
     defaultTargetId: r.default_target_id,
     wantsTwoMas: r.wants_two_mas,
     coverage: r.coverage,
@@ -45,6 +47,7 @@ export function assignmentFromRow(r: DailyAssignmentRow): Assignment {
     isShipping: r.is_shipping,
     isSocialMedia: r.is_social_media,
     customText: r.custom_text,
+    weeklyTaskNo: r.weekly_task_no,
   };
 }
 
@@ -61,5 +64,6 @@ export function assignmentToRow(a: Assignment): Omit<DailyAssignmentRow, 'id'> {
     is_shipping: a.isShipping,
     is_social_media: a.isSocialMedia,
     custom_text: a.customText,
+    weekly_task_no: a.weeklyTaskNo,
   };
 }

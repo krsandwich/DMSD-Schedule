@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getDay, parseISO } from 'date-fns';
 import { generateMonth } from '../generateMonth';
 import { buildRoster } from './roster.fixture';
-import { allWorking } from './patterns.fixture';
+import { allWorking, patch } from './patterns.fixture';
 
 describe('generateMonth — orchestration', () => {
   const staff = buildRoster();
@@ -44,6 +44,22 @@ describe('generateMonth — orchestration', () => {
   it('generates a clean fully-staffed month with no warnings', () => {
     const { warnings } = generateMonth({ staff, patterns, month });
     expect(warnings).toEqual([]);
+  });
+
+  it('switches an alternating location every two weeks within the month', () => {
+    // June 2026 view weeks (by Monday): Jun 1, 8, 15, 22, 29 → blocks 0,0,1,1,0.
+    const june = patch(allWorking(staff, 'kona'), 'tricia', {
+      locationByWeekday: { '1': 'alternating', '2': 'alternating', '3': 'alternating', '4': 'alternating', '5': 'alternating' },
+    });
+    const alt = [...june, ...allWorking(staff, 'kona', '2026-07-01')];
+    const { assignments } = generateMonth({ staff, patterns: alt, month });
+    const loc = (date: string) =>
+      assignments.find((a) => a.staffId === 'tricia' && a.date === date)?.location;
+    expect(loc('2026-06-01')).toBe('kona'); // week 0 (block 0)
+    expect(loc('2026-06-08')).toBe('kona'); // week 1 (block 0)
+    expect(loc('2026-06-15')).toBe('waimea'); // week 2 (block 1)
+    expect(loc('2026-06-22')).toBe('waimea'); // week 3 (block 1)
+    expect(loc('2026-06-29')).toBe('kona'); // week 4 (block 0 again)
   });
 
   it('skips holidays entirely — no assignments, no warnings', () => {

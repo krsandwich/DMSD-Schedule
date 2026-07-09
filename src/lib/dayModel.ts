@@ -54,6 +54,7 @@ function offAssignment(date: string, staffId: string): Assignment {
     isShipping: false,
     isSocialMedia: false,
     customText: null,
+    weeklyTaskNo: null,
   };
 }
 

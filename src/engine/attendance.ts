@@ -1,4 +1,14 @@
-import type { Assignment, DayMap, Location, MonthlyPattern, Staff } from './types';
+import type { Assignment, DayMap, Location, MonthlyPattern, Staff, WeekdayLocation } from './types';
+
+/**
+ * The two locations an alternating choice cycles through, in order. The first is
+ * used for the first two-week block of the month, the second for the next block,
+ * repeating (see `weekBlock`).
+ */
+const ALTERNATING: Partial<Record<WeekdayLocation, readonly [Location, Location]>> = {
+  alternating: ['kona', 'waimea'],
+  waimea_kona: ['waimea', 'kona'],
+};
 
 /**
  * Step 1 — Attendance & locations.
@@ -7,8 +17,9 @@ import type { Assignment, DayMap, Location, MonthlyPattern, Staff } from './type
  * day-of-month is not in `requestedOffDays`. Working people take their location
  * from `locationByWeekday`; everyone else renders `off`.
  *
- * A weekday set to `'alternating'` resolves to Kona on even-parity weeks and
- * Waimea on odd-parity weeks (`weekParity`, supplied by the caller).
+ * A weekday set to `'alternating'` / `'waimea_kona'` resolves by the two-week
+ * block of the month (`weekBlock`, supplied by the caller): block 0 = the first
+ * two weeks, block 1 = the next two, alternating.
  *
  * Returns a fresh assignment row for every active staff member for the day.
  */
@@ -18,7 +29,7 @@ export function resolveAttendance(
   weekday: number,
   staff: Staff[],
   patternsByStaff: Map<string, MonthlyPattern>,
-  weekParity: 0 | 1 = 0,
+  weekBlock: 0 | 1 = 0,
 ): DayMap {
   const day: DayMap = new Map();
 
@@ -29,11 +40,20 @@ export function resolveAttendance(
     let location: Location = 'off';
 
     if (pattern) {
+      const resolve = (choice: WeekdayLocation): Location =>
+        ALTERNATING[choice]?.[weekBlock] ?? (choice as Location);
+
       const worksWeekday = pattern.usualWeekdays.includes(weekday);
       const isOff = pattern.requestedOffDays.includes(dayOfMonth);
       if (worksWeekday && !isOff) {
-        const choice = pattern.locationByWeekday[String(weekday)] ?? 'off';
-        location = choice === 'alternating' ? (weekParity === 0 ? 'kona' : 'waimea') : choice;
+        location = resolve(pattern.locationByWeekday[String(weekday)] ?? 'off');
+      }
+
+      // Additional working days override the usual pattern AND requested-off:
+      // the person works this day at additionalDaysLocation.
+      const addLoc = pattern.additionalDaysLocation;
+      if (pattern.additionalDays.includes(dayOfMonth) && addLoc && addLoc !== 'off') {
+        location = resolve(addLoc);
       }
     }
 
@@ -49,6 +69,7 @@ export function resolveAttendance(
       isShipping: false,
       isSocialMedia: false,
       customText: null,
+      weeklyTaskNo: null,
     };
     day.set(person.id, assignment);
   }

@@ -104,7 +104,15 @@ export function SchedulePage() {
       .filter((s) => s.active && s.role === 'ma' && !modEligible(s.id) && worksThisWeek(s.id))
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
       .map((s) => s.id);
-    return assignWeeklyTasks(getISOWeek(week[0]), eligible);
+    const tasks = assignWeeklyTasks(getISOWeek(week[0]), eligible);
+    // Manual overrides win over the automatic rotation. An override stored on any
+    // day of the week pins that MA's task # for the whole week (the badge is weekly).
+    for (const day of week) {
+      for (const a of assignmentsByDate.get(isoOf(day)) ?? []) {
+        if (a.weeklyTaskNo != null) tasks.set(a.staffId, a.weeklyTaskNo);
+      }
+    }
+    return tasks;
   };
 
   const [editing, setEditing] = useState<{ assignment: Assignment; staff: Staff } | null>(null);
@@ -165,6 +173,13 @@ export function SchedulePage() {
 
   const rows = weekdayRows(month);
 
+  // The MA's current weekly task # (override if set, else rotation) for the editor.
+  let editingTaskNo: number | undefined;
+  if (editing && editing.staff.role === 'ma') {
+    const week = rows.find((w) => w.some((d) => isoOf(d) === editing.assignment.date));
+    if (week) editingTaskNo = weeklyTasksFor(week).get(editing.staff.id);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <Toolbar
@@ -221,8 +236,20 @@ export function SchedulePage() {
           dayAssignments={assignmentsByDate.get(editing.assignment.date) ?? []}
           allStaff={staff}
           coverageStaffIds={coverageStaffIds}
+          currentTaskNo={editingTaskNo}
           onSave={(next) => {
             upsert.mutate(next);
+            // Weekly task # is a per-week badge: propagate a change to all of this
+            // MA's other assignments in the same week so every day stays consistent.
+            if (editing.staff.role === 'ma' && next.weeklyTaskNo !== editing.assignment.weeklyTaskNo) {
+              const week = rows.find((w) => w.some((d) => isoOf(d) === next.date));
+              week?.forEach((day) => {
+                const iso = isoOf(day);
+                if (iso === next.date) return;
+                const a = (assignmentsByDate.get(iso) ?? []).find((x) => x.staffId === next.staffId);
+                if (a) upsert.mutate({ ...a, weeklyTaskNo: next.weeklyTaskNo });
+              });
+            }
             setEditing(null);
           }}
           onClose={() => setEditing(null)}

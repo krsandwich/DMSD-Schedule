@@ -39,6 +39,9 @@ type WeekdayChoice = WeekdayLocation; // 'off' means not working that weekday
 interface Draft {
   byWeekday: Record<number, WeekdayChoice>;
   offText: string;
+  /** Additional force-work days (day-of-month ranges) and their location. */
+  addlText: string;
+  addlLocation: WeekdayLocation;
   /** MA -> default provider id; PCC/concierge -> default target id; null = none. */
   defaultTargetId: string | null;
   /** Provider only: fill to 2 MAs first. */
@@ -57,6 +60,8 @@ function emptyDraft(): Draft {
   return {
     byWeekday: { 1: 'off', 2: 'off', 3: 'off', 4: 'off', 5: 'off' },
     offText: '',
+    addlText: '',
+    addlLocation: 'off',
     defaultTargetId: null,
     wantsTwoMas: false,
     coverage: false,
@@ -95,6 +100,8 @@ function draftFromPattern(p: MonthlyPattern, s: Staff, idByName: Map<string, str
   return {
     byWeekday,
     offText: formatDayRanges(p.requestedOffDays),
+    addlText: formatDayRanges(p.additionalDays),
+    addlLocation: p.additionalDaysLocation ?? 'off',
     wantsTwoMas: p.wantsTwoMas,
     coverage: p.coverage,
     // Fall back to the seeded defaults for rows saved before these fields existed.
@@ -189,8 +196,14 @@ export function MonthlySetupPage() {
         const p = byStaff.get(s.id);
         if (!p) continue;
         const d = draftFromPattern(p, s, idByName);
-        // Carry weekday patterns + defaults/ranks; keep this month's requested time off.
-        next[s.id] = { ...d, offText: current[s.id]?.offText ?? '' };
+        // Carry weekday patterns + defaults/ranks; keep this month's requested time
+        // off and additional days (both are month-specific, not carried).
+        next[s.id] = {
+          ...d,
+          offText: current[s.id]?.offText ?? '',
+          addlText: current[s.id]?.addlText ?? '',
+          addlLocation: current[s.id]?.addlLocation ?? 'off',
+        };
       }
       return next;
     });
@@ -213,6 +226,8 @@ export function MonthlySetupPage() {
       usualWeekdays,
       locationByWeekday,
       requestedOffDays: parseDayRanges(d.offText),
+      additionalDays: parseDayRanges(d.addlText),
+      additionalDaysLocation: d.addlLocation,
       defaultTargetId: d.defaultTargetId,
       wantsTwoMas: d.wantsTwoMas,
       coverage: d.coverage,
@@ -290,6 +305,8 @@ export function MonthlySetupPage() {
                 </th>
               ))}
               <th className="p-2">Requested off {format(month, 'MMM yyyy')}</th>
+              <th className="p-2">Additional days</th>
+              <th className="p-2">Additional days location</th>
               <th className="p-2">Defaults &amp; ranks</th>
             </tr>
           </thead>
@@ -302,7 +319,7 @@ export function MonthlySetupPage() {
                   {showGroupHeader && (
                     <tr className="bg-gray-50">
                       <td
-                        colSpan={WEEKDAYS.length + 3}
+                        colSpan={WEEKDAYS.length + 5}
                         className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-gray-500"
                       >
                         {ROLE_LABEL[s.role]}
@@ -333,6 +350,29 @@ export function MonthlySetupPage() {
                         placeholder="1-3, 8-11"
                         onChange={(e) => setOffText(s.id, e.target.value)}
                       />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
+                        value={d.addlText}
+                        placeholder="3, 6"
+                        onChange={(e) => setField(s.id, { addlText: e.target.value })}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <select
+                        className="rounded border border-gray-300 px-1 py-1 text-xs"
+                        value={d.addlLocation}
+                        onChange={(e) =>
+                          setField(s.id, { addlLocation: e.target.value as WeekdayLocation })
+                        }
+                      >
+                        {SELECTABLE_WEEKDAY_LOCATIONS.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc === 'off' ? '—' : WEEKDAY_LOCATION_LABEL[loc]}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="p-2">
                       <DefaultsCell

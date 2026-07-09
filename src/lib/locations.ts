@@ -4,13 +4,14 @@ export const LOCATION_LABEL: Record<Location, string> = {
   kona: 'Kona',
   waimea: 'Waimea',
   remote: 'Remote',
-  off: 'Off / R-O',
+  off: 'Off',
 };
 
-/** Label for a monthly-setup weekday choice, including the 'alternating' option. */
+/** Label for a monthly-setup weekday choice, including the alternating options. */
 export const WEEKDAY_LOCATION_LABEL: Record<WeekdayLocation, string> = {
   ...LOCATION_LABEL,
   alternating: 'Kona / Waimea',
+  waimea_kona: 'Waimea / Kona',
 };
 
 /** Tailwind classes for a tile at a given location. */
@@ -36,5 +37,6 @@ export const SELECTABLE_WEEKDAY_LOCATIONS: WeekdayLocation[] = [
   'kona',
   'waimea',
   'alternating',
+  'waimea_kona',
   'remote',
 ];

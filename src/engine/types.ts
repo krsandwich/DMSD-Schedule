@@ -14,12 +14,15 @@ export type Role =
 export type Location = 'kona' | 'waimea' | 'remote' | 'off';
 
 /**
- * A monthly-setup weekday choice. Either a fixed {@link Location}, or
- * `'alternating'` — the person switches between Kona and Waimea week to week.
- * `'alternating'` is resolved to a concrete location per-day in Step 1 by week
- * parity (even ISO week → Kona, odd → Waimea); it never reaches a daily assignment.
+ * A monthly-setup weekday choice. Either a fixed {@link Location}, or a two-week
+ * alternating pattern:
+ *  - `'alternating'`  → Kona for the first two weeks of the month, Waimea for the
+ *    next two, repeating (Kona / Waimea).
+ *  - `'waimea_kona'`  → the reverse (Waimea / Kona).
+ * These are resolved to a concrete location per-day in Step 1 from the two-week
+ * block index; they never reach a daily assignment.
  */
-export type WeekdayLocation = Location | 'alternating';
+export type WeekdayLocation = Location | 'alternating' | 'waimea_kona';
 
 export interface Staff {
   id: string;
@@ -45,6 +48,19 @@ export interface MonthlyPattern {
   locationByWeekday: Record<string, WeekdayLocation>;
   /** Days of month (1-based), expanded from ranges like "1-3, 8-11". */
   requestedOffDays: number[];
+  /**
+   * Additional working days (1-based days of month) — the inverse of
+   * {@link requestedOffDays}. On these days the person works at
+   * {@link additionalDaysLocation}, overriding their usual weekday pattern and any
+   * requested-off. Empty = none.
+   */
+  additionalDays: number[];
+  /**
+   * Location for {@link additionalDays}. null or `'off'` means the additional days
+   * have no effect. `'alternating'` / `'waimea_kona'` resolve by two-week block
+   * like a weekday.
+   */
+  additionalDaysLocation: WeekdayLocation | null;
   /**
    * Preferred assignment, by role:
    *  - MA  → their default provider (a `receivesMas` staff id).
@@ -82,6 +98,11 @@ export interface Assignment {
   isShipping: boolean;
   isSocialMedia: boolean;
   customText: string | null;
+  /**
+   * Weekly task # (#1–6) override. null = use the automatic per-week rotation
+   * (see weeklyTasks.ts); a number pins this MA's weekly task badge for the week.
+   */
+  weeklyTaskNo: number | null;
 }
 
 export type WarningType =

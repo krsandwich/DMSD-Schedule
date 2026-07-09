@@ -43,8 +43,11 @@ const ROWS: RoleRow[] = [
   covererRow('concierge', 'Aesthetic Concierge', (d) => d.concierge),
   personRow('managers', 'Manager', (d) => d.managers),
   personRow('remote', 'Remote Team', (d) => d.remote),
-  personRow('off', 'Off', (d) => d.off, true),
-  personRow('requestedOff', 'Request Off (R/O)', (d) => d.requestedOff, true),
+  personRow('off', 'Off', (d) => d.off, { muted: true }),
+  personRow('requestedOff', 'Request Off (R/O)', (d) => d.requestedOff, {
+    muted: true,
+    requestedOff: true,
+  }),
 ];
 
 export function WeekGrid({
@@ -260,12 +263,12 @@ function personRow(
   key: string,
   label: string,
   pick: (d: DayModel) => PersonView[],
-  muted?: boolean,
+  opts: { muted?: boolean; requestedOff?: boolean } = {},
 ): RoleRow {
   return {
     key,
     label,
-    muted,
+    muted: opts.muted,
     has: (d) => pick(d).length > 0,
     cell: (d, ctx) =>
       pick(d).map((p) => (
@@ -275,6 +278,7 @@ function personRow(
           assignment={p.assignment}
           editable={ctx.editable}
           taskNo={ctx.taskByStaff.get(p.staff.id)}
+          requestedOff={opts.requestedOff}
           onClick={() => ctx.onTileClick(p.assignment, p.staff)}
         />
       )),

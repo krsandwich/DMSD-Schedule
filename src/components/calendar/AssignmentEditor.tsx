@@ -13,6 +13,8 @@ interface Props {
   allStaff: Staff[];
   /** Providers flagged for coverage this month (both need and can provide it). */
   coverageStaffIds: Set<string>;
+  /** This MA's current weekly task # (override if set, else the rotation default). */
+  currentTaskNo?: number;
   onSave: (next: Assignment) => void;
   onClose: () => void;
 }
@@ -24,6 +26,7 @@ export function AssignmentEditor({
   dayAssignments,
   allStaff,
   coverageStaffIds,
+  currentTaskNo,
   onSave,
   onClose,
 }: Props) {
@@ -144,6 +147,25 @@ export function AssignmentEditor({
             checked={draft.isSocialMedia}
             onChange={(v) => set({ isSocialMedia: v })}
           />
+        )}
+
+        {staff.role === 'ma' && (
+          <Field label="Weekly task #">
+            <select
+              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+              value={draft.weeklyTaskNo ?? currentTaskNo ?? ''}
+              onChange={(e) =>
+                set({ weeklyTaskNo: e.target.value ? Number(e.target.value) : null })
+              }
+            >
+              {currentTaskNo == null && <option value="">—</option>}
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  #{n}
+                </option>
+              ))}
+            </select>
+          </Field>
         )}
 
         <Field label="Custom note">
