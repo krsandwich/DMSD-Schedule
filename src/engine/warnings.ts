@@ -91,6 +91,10 @@ export function computeWarnings(
   for (const a of dayAssignments) for (const id of a.pccCoversIds) pccCoveredIds.add(id);
   for (const target of staff) {
     if (!target.needsPcc || !working(target.id)) continue;
+    // A target who is themselves standing in as an MA (assigned to a provider) or as
+    // a PCC (covering others) is occupied and doesn't need their own PCC that day.
+    const own = byStaff.get(target.id);
+    if (own && (own.assignedProviderId || own.pccCoversIds.length > 0)) continue;
     if (!pccCoveredIds.has(target.id)) {
       warnings.push({
         date: isoDate,

@@ -20,6 +20,8 @@ export interface CovererView {
 export interface PersonView {
   staff: Staff;
   assignment: Assignment;
+  /** Targets this person is covering as a stand-in PCC (managers / estheticians). */
+  covers?: Staff[];
 }
 
 export interface DayModel {
@@ -152,7 +154,7 @@ export function buildDayModel(
 
     switch (person.role) {
       case 'manager':
-        model.managers.push({ staff: person, assignment });
+        model.managers.push({ staff: person, assignment, covers: covsOf(assignment, staffById) });
         break;
       case 'pcc':
         model.pccs.push(coverer(person, assignment, staffById));
@@ -161,7 +163,7 @@ export function buildDayModel(
         model.concierge.push(coverer(person, assignment, staffById));
         break;
       case 'esthetician':
-        model.estheticians.push({ staff: person, assignment });
+        model.estheticians.push({ staff: person, assignment, covers: covsOf(assignment, staffById) });
         break;
       case 'wellness':
         model.wellness.push({ staff: person, assignment });
@@ -179,11 +181,12 @@ export function buildDayModel(
 }
 
 function coverer(staff: Staff, assignment: Assignment, staffById: Map<string, Staff>): CovererView {
-  return {
-    staff,
-    assignment,
-    covers: assignment.pccCoversIds
-      .map((id) => staffById.get(id))
-      .filter((s): s is Staff => !!s),
-  };
+  return { staff, assignment, covers: covsOf(assignment, staffById) };
+}
+
+/** The staff a person's `pccCoversIds` point to (skipping any now-missing ids). */
+function covsOf(assignment: Assignment, staffById: Map<string, Staff>): Staff[] {
+  return assignment.pccCoversIds
+    .map((id) => staffById.get(id))
+    .filter((s): s is Staff => !!s);
 }

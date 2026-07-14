@@ -40,11 +40,16 @@ export function AssignmentEditor({
   );
   const pccTargets = allStaff.filter((s) => s.needsPcc && present.has(s.id));
 
-  // MAs — and managers, manually — can be assigned under a provider.
-  const canBeMa = staff.role === 'ma' || staff.role === 'manager';
+  // MAs — and managers / estheticians, manually — can be assigned under a provider (cover an MA).
+  const canBeMa = staff.role === 'ma' || staff.role === 'manager' || staff.role === 'esthetician';
   // Only coverage-flagged providers can be assigned to cover absent providers.
   const canCover = staff.role === 'provider' && coverageStaffIds.has(staff.id);
-  const isCoverer = staff.role === 'pcc' || staff.role === 'aesthetic_concierge';
+  // PCCs and concierge cover targets; managers / estheticians can stand in as PCC too.
+  const isCoverer =
+    staff.role === 'pcc' ||
+    staff.role === 'aesthetic_concierge' ||
+    staff.role === 'manager' ||
+    staff.role === 'esthetician';
   // MAs and support roles can be MOD / handle shipping.
   const canModOrShip = staff.role === 'ma' || isSupportRole(staff.role);
 
@@ -88,7 +93,7 @@ export function AssignmentEditor({
         )}
 
         {canBeMa && (
-          <Field label="Assigned provider">
+          <Field label="MA — assigned provider">
             <select
               className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
               value={draft.assignedProviderId ?? ''}
@@ -125,7 +130,9 @@ export function AssignmentEditor({
         {isCoverer && (
           <Field label="PCC covers">
             <div className="max-h-40 space-y-1 overflow-y-auto">
-              {pccTargets.map((t) => (
+              {pccTargets
+                .filter((t) => t.id !== staff.id)
+                .map((t) => (
                 <Check
                   key={t.id}
                   label={t.displayName}

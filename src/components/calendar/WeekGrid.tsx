@@ -218,7 +218,8 @@ function ProviderCard({
         onClick={() => onTileClick(view.assignment, view.staff)}
       />
       <div className="mt-1 space-y-0.5 pl-3">
-        {[0, 1].map((slot) => {
+        {/* Show every assigned MA (a manual 3rd+ stays visible), with 2 slots minimum. */}
+        {Array.from({ length: Math.max(2, view.mas.length) }, (_, slot) => {
           const ma = view.mas[slot];
           if (ma) {
             const maStaff = staffById.get(ma.staffId);
@@ -279,6 +280,7 @@ function personRow(
           editable={ctx.editable}
           taskNo={ctx.taskByStaff.get(p.staff.id)}
           requestedOff={opts.requestedOff}
+          covers={p.covers}
           onClick={() => ctx.onTileClick(p.assignment, p.staff)}
         />
       )),

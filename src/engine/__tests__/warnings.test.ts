@@ -73,4 +73,34 @@ describe('Step 9 — warnings', () => {
     }
     expect(types(patterns)).toContain('target_no_pcc');
   });
+
+  it('does not flag an esthetician who is standing in as an MA or PCC', () => {
+    // No PCC / concierge working, so every target would otherwise be uncovered.
+    let patterns = allWorking(staff);
+    for (const id of ['wendy', 'kalea', 'ellis', 'christie', 'raella', 'maile']) {
+      patterns = makeOff(patterns, id);
+    }
+    const { assignments, index } = fullDay(patterns);
+    const flagged = (list: Assignment[], id: string) =>
+      computeWarnings('2026-06-01', list, staff, index).some(
+        (w) => w.type === 'target_no_pcc' && w.refKey === id,
+      );
+
+    // Baseline: Shania is flagged as an uncovered target.
+    expect(flagged(assignments, 'shania')).toBe(true);
+
+    // Standing in as an MA (assigned to a provider) clears her own-PCC flag…
+    const asMa = assignments.map((a) =>
+      a.staffId === 'shania' ? { ...a, assignedProviderId: 'tricia', maSlot: 1 } : a,
+    );
+    expect(flagged(asMa, 'shania')).toBe(false);
+
+    // …as does standing in as a PCC (covering someone).
+    const asPcc = assignments.map((a) =>
+      a.staffId === 'shania' ? { ...a, pccCoversIds: ['monica'] } : a,
+    );
+    expect(flagged(asPcc, 'shania')).toBe(false);
+    // Mia, who isn't standing in, is still flagged.
+    expect(flagged(asPcc, 'mia')).toBe(true);
+  });
 });
