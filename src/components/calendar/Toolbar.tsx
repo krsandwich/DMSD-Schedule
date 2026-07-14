@@ -13,6 +13,10 @@ interface Props {
   onExport: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
+  /** Whether the selected month is published (visible to viewers). */
+  isPublished: boolean;
+  onTogglePublish: () => void;
+  publishPending: boolean;
 }
 
 export function Toolbar({
@@ -25,6 +29,9 @@ export function Toolbar({
   onExport,
   onSignIn,
   onSignOut,
+  isPublished,
+  onTogglePublish,
+  publishPending,
 }: Props) {
   return (
     <header className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2">
@@ -36,6 +43,16 @@ export function Toolbar({
         <Button variant="ghost" onClick={() => setMonth(nextMonth(month))}>
           ›
         </Button>
+        {isEditor && (
+          <span
+            title={isPublished ? 'Visible to viewers' : 'Hidden from viewers'}
+            className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            {isPublished ? 'Published' : 'Draft'}
+          </span>
+        )}
       </div>
 
       <LocationLegend />
@@ -61,6 +78,18 @@ export function Toolbar({
             </Link>
             <Button onClick={onGenerate} disabled={generating}>
               {generating ? 'Generating…' : 'Generate month'}
+            </Button>
+            <Button
+              variant={isPublished ? 'secondary' : 'primary'}
+              onClick={onTogglePublish}
+              disabled={publishPending}
+              title={
+                isPublished
+                  ? 'Published — click to hide this month from viewers'
+                  : 'Not published — click to make this month visible to viewers'
+              }
+            >
+              {isPublished ? 'Unpublish' : 'Publish'}
             </Button>
           </>
         )}

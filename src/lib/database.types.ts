@@ -54,6 +54,10 @@ export type MonthlyHolidayRow = {
   days: number[];
 }
 
+export type PublishedMonthRow = {
+  month: string;
+}
+
 export type DismissedWarningRow = {
   date: string;
   type: string;
@@ -80,6 +84,7 @@ export interface Database {
       staff: Table<StaffRow>;
       monthly_patterns: Table<MonthlyPatternRow, Omit<MonthlyPatternRow, 'id'>>;
       monthly_holidays: Table<MonthlyHolidayRow, MonthlyHolidayRow>;
+      published_months: Table<PublishedMonthRow, PublishedMonthRow>;
       daily_assignments: Table<DailyAssignmentRow, Omit<DailyAssignmentRow, 'id'>>;
       dismissed_warnings: Table<DismissedWarningRow, DismissedWarningRow>;
       app_users: Table<AppUserRow>;

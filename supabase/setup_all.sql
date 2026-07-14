@@ -95,6 +95,12 @@ create table monthly_holidays (
   days  int[] not null default '{}'
 );
 
+-- Published months (row present = published). Viewer UI only shows published
+-- months; the gating is UI-only, not enforced by RLS.
+create table published_months (
+  month date primary key
+);
+
 -- ============================================================
 -- 2) Auth helpers + RLS
 -- ============================================================
@@ -135,17 +141,18 @@ alter table monthly_patterns   enable row level security;
 alter table monthly_holidays   enable row level security;
 alter table daily_assignments  enable row level security;
 alter table dismissed_warnings enable row level security;
+alter table published_months   enable row level security;
 
 create policy app_users_select_self on app_users
   for select to authenticated using (id = auth.uid());
 
 -- Schedule tables are publicly readable (read-only); writes are editor-only.
-grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings to anon;
+grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings, published_months to anon;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings']
+  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings','published_months']
   loop
     execute format('create policy %1$s_select on %1$s for select to public using (true);', t);
     execute format('create policy %1$s_insert on %1$s for insert to authenticated with check (is_editor());', t);

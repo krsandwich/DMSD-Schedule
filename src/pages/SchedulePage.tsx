@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -17,8 +17,18 @@ import { useAssignments, useReplaceMonth, useUpsertAssignment } from '@/hooks/us
 import { useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
 import { useMonthHolidays } from '@/hooks/useMonthHolidays';
+import { usePublishedMonths, useSetMonthPublished } from '@/hooks/usePublishedMonths';
 import { useRealtime } from '@/hooks/useRealtime';
-import { daysToIso, isoOf, monthLabel, nextMonth, sameCalendarMonth, weekdayRows } from '@/lib/dates';
+import {
+  daysToIso,
+  isoOf,
+  monthKey,
+  monthLabel,
+  nextMonth,
+  parseIso,
+  sameCalendarMonth,
+  weekdayRows,
+} from '@/lib/dates';
 import { roleRank } from '@/lib/roles';
 import { buildDayModel } from '@/lib/dayModel';
 import { Spinner } from '@/components/common/Spinner';
@@ -40,10 +50,27 @@ export function SchedulePage() {
   const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
   const assignmentsQuery = useAssignments(month);
   const dismissedQuery = useDismissedWarnings(month);
+  const publishedQuery = usePublishedMonths();
 
   const replaceMonth = useReplaceMonth(month);
   const upsert = useUpsertAssignment(month);
   const dismiss = useDismissWarning(month);
+  const setPublished = useSetMonthPublished();
+
+  const isPublished = (publishedQuery.data ?? new Set<string>()).has(monthKey(month));
+
+  // Viewers: on first load, if the current month isn't published, jump to the most
+  // recent published month (if any) so they don't land on an empty screen.
+  const didInitViewer = useRef(false);
+  useEffect(() => {
+    if (isEditor || didInitViewer.current || !publishedQuery.data) return;
+    didInitViewer.current = true;
+    if (!publishedQuery.data.has(monthKey(month))) {
+      const latest = [...publishedQuery.data].sort().at(-1);
+      if (latest) setMonth(parseIso(latest));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditor, publishedQuery.data]);
 
   useRealtime(month);
 
@@ -192,10 +219,19 @@ export function SchedulePage() {
         onExport={handleExport}
         onSignIn={() => setShowSignIn(true)}
         onSignOut={signOut}
+        isPublished={isPublished}
+        onTogglePublish={() => setPublished.mutate({ month, published: !isPublished })}
+        publishPending={setPublished.isPending}
       />
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <main className="flex-1 space-y-4 overflow-auto p-4">
+          {!isEditor && !isPublished ? (
+            <p className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+              This month hasn’t been published yet.
+            </p>
+          ) : (
+          <>
           {assignments.length === 0 && (
             <p className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
               No schedule generated for this month yet.
@@ -225,6 +261,8 @@ export function SchedulePage() {
               </section>
             );
           })}
+          </>
+          )}
         </main>
       </DndContext>
 
