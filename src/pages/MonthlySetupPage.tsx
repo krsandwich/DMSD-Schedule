@@ -1,12 +1,13 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { MonthlyPattern, Staff, WeekdayLocation } from '@/engine/types';
 import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
 import { useMonthHolidays, useSaveHolidays } from '@/hooks/useMonthHolidays';
+import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { format } from 'date-fns';
-import { monthLabel, nextMonth, previousMonth } from '@/lib/dates';
+import { monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
 import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
 import { SELECTABLE_WEEKDAY_LOCATIONS, WEEKDAY_LOCATION_LABEL } from '@/lib/locations';
 import { WEEKDAY_LABELS } from '@/lib/dates';
@@ -122,6 +123,20 @@ export function MonthlySetupPage() {
   const savePattern = useSavePattern(month);
   const holidaysQuery = useMonthHolidays(month);
   const saveHolidays = useSaveHolidays(month);
+  const hiddenQuery = useHiddenMonths();
+  const setHidden = useSetMonthHidden();
+
+  const isHidden = (hiddenQuery.data ?? new Set<string>()).has(monthKey(month));
+
+  // On first load, open the earliest non-hidden month from now forward.
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current || !hiddenQuery.data) return;
+    didInit.current = true;
+    const target = upcomingNonHiddenMonth(new Date(), hiddenQuery.data);
+    if (monthKey(target) !== monthKey(month)) setMonth(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenQuery.data]);
 
   const staff = useMemo(
     () =>
@@ -267,9 +282,29 @@ export function MonthlySetupPage() {
           <Button variant="ghost" onClick={() => setMonth(nextMonth(month))}>
             ›
           </Button>
+          {isHidden && (
+            <span
+              title="Hidden — skipped when the app picks a default month"
+              className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
+            >
+              Hidden
+            </span>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-2">
           {status && <span className="text-xs text-gray-500">{status}</span>}
+          <Button
+            variant="secondary"
+            onClick={() => setHidden.mutate({ month, hidden: !isHidden })}
+            disabled={setHidden.isPending}
+            title={
+              isHidden
+                ? 'Unhide — allow this month to be a default landing month again'
+                : 'Hide — stop the app from defaulting to this month'
+            }
+          >
+            {isHidden ? 'Unhide month' : 'Hide month'}
+          </Button>
           <Button variant="secondary" onClick={carryForward}>
             Carry forward
           </Button>

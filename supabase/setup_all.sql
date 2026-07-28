@@ -101,6 +101,12 @@ create table published_months (
   month date primary key
 );
 
+-- Hidden months (row present = hidden). Editor-only: the editor's default landing
+-- month skips hidden months. Independent of published_months.
+create table hidden_months (
+  month date primary key
+);
+
 -- ============================================================
 -- 2) Auth helpers + RLS
 -- ============================================================
@@ -142,17 +148,18 @@ alter table monthly_holidays   enable row level security;
 alter table daily_assignments  enable row level security;
 alter table dismissed_warnings enable row level security;
 alter table published_months   enable row level security;
+alter table hidden_months      enable row level security;
 
 create policy app_users_select_self on app_users
   for select to authenticated using (id = auth.uid());
 
 -- Schedule tables are publicly readable (read-only); writes are editor-only.
-grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings, published_months to anon;
+grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings, published_months, hidden_months to anon;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings','published_months']
+  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings','published_months','hidden_months']
   loop
     execute format('create policy %1$s_select on %1$s for select to public using (true);', t);
     execute format('create policy %1$s_insert on %1$s for insert to authenticated with check (is_editor());', t);

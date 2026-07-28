@@ -58,6 +58,10 @@ export type PublishedMonthRow = {
   month: string;
 }
 
+export type HiddenMonthRow = {
+  month: string;
+}
+
 export type DismissedWarningRow = {
   date: string;
   type: string;
@@ -85,6 +89,7 @@ export interface Database {
       monthly_patterns: Table<MonthlyPatternRow, Omit<MonthlyPatternRow, 'id'>>;
       monthly_holidays: Table<MonthlyHolidayRow, MonthlyHolidayRow>;
       published_months: Table<PublishedMonthRow, PublishedMonthRow>;
+      hidden_months: Table<HiddenMonthRow, HiddenMonthRow>;
       daily_assignments: Table<DailyAssignmentRow, Omit<DailyAssignmentRow, 'id'>>;
       dismissed_warnings: Table<DismissedWarningRow, DismissedWarningRow>;
       app_users: Table<AppUserRow>;

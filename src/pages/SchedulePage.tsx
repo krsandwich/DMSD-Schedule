@@ -18,6 +18,7 @@ import { useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWar
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
 import { useMonthHolidays } from '@/hooks/useMonthHolidays';
 import { usePublishedMonths, useSetMonthPublished } from '@/hooks/usePublishedMonths';
+import { useHiddenMonths, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { useRealtime } from '@/hooks/useRealtime';
 import {
   daysToIso,
@@ -51,6 +52,7 @@ export function SchedulePage() {
   const assignmentsQuery = useAssignments(month);
   const dismissedQuery = useDismissedWarnings(month);
   const publishedQuery = usePublishedMonths();
+  const hiddenQuery = useHiddenMonths();
 
   const replaceMonth = useReplaceMonth(month);
   const upsert = useUpsertAssignment(month);
@@ -71,6 +73,17 @@ export function SchedulePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditor, publishedQuery.data]);
+
+  // Editors: on first load, open the earliest non-hidden month from now forward
+  // (skips months the editor has hidden in Monthly Setup).
+  const didInitEditor = useRef(false);
+  useEffect(() => {
+    if (!isEditor || didInitEditor.current || !hiddenQuery.data) return;
+    didInitEditor.current = true;
+    const target = upcomingNonHiddenMonth(new Date(), hiddenQuery.data);
+    if (monthKey(target) !== monthKey(month)) setMonth(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditor, hiddenQuery.data]);
 
   useRealtime(month);
 
