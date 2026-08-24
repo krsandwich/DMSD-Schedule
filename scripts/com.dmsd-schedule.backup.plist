@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs the backup script once a day. Points at ~/.dmsd-schedule/backup-db.sh,
+  NOT the copy in this repo — launchd cannot read/execute a script located
+  under ~/Desktop (macOS TCC blocks it; confirmed by testing, see
+  scripts/README-backups.md). Install by copying this file into
+  ~/Library/LaunchAgents/ and loading it — see the "Install" section in
+  scripts/README-backups.md for the exact commands.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dmsd-schedule.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kyleekrzanich/.dmsd-schedule/backup-db.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Daily at 6:00 AM. Missed runs (Mac asleep/off) fire shortly after the
+       next login/wake; RunAtLoad also fires one immediately when the agent
+       is (re)loaded, which doubles as an easy way to test the install. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kyleekrzanich/Library/Logs/dmsd-schedule-backup.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/kyleekrzanich/Library/Logs/dmsd-schedule-backup.err.log</string>
+</dict>
+</plist>

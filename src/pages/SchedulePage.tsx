@@ -14,6 +14,7 @@ import { useSession } from '@/hooks/useSession';
 import { useAllStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns } from '@/hooks/useMonthlyPatterns';
 import { useAssignments, useReplaceMonth, useUpsertAssignment } from '@/hooks/useAssignments';
+import { useScheduleSnapshot, useSaveSnapshot } from '@/hooks/useScheduleSnapshot';
 import { useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
 import { useMonthHolidays } from '@/hooks/useMonthHolidays';
@@ -55,6 +56,8 @@ export function SchedulePage() {
   const hiddenQuery = useHiddenMonths();
 
   const replaceMonth = useReplaceMonth(month);
+  const saveSnapshot = useSaveSnapshot(month);
+  const snapshotQuery = useScheduleSnapshot(month);
   const upsert = useUpsertAssignment(month);
   const dismiss = useDismissWarning(month);
   const setPublished = useSetMonthPublished();
@@ -178,7 +181,16 @@ export function SchedulePage() {
     });
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    // Snapshot the current schedule (incl. all manual edits) BEFORE overwriting it,
+    // so "Revert last Generate" can restore it. If the snapshot write fails, abort
+    // the generate rather than overwrite with no way back.
+    try {
+      await saveSnapshot.mutateAsync(assignments);
+    } catch {
+      window.alert('Could not save a backup before generating — aborted. Please try again.');
+      return;
+    }
     const { assignments: generated } = generateMonth({
       staff: activeStaff,
       patterns: [...(patternsQuery.data ?? []), ...(nextPatternsQuery.data ?? [])],
@@ -186,6 +198,16 @@ export function SchedulePage() {
       holidays: holidaySet,
     });
     replaceMonth.mutate(generated);
+  };
+
+  // Restore the schedule to the snapshot captured just before the last Generate.
+  const handleRevert = () => {
+    const snap = snapshotQuery.data;
+    if (!snap) return;
+    const when = new Date(snap.takenAt).toLocaleString();
+    if (!window.confirm(`Revert ${monthLabel(month)} to the schedule from just before the last Generate (${when})? This replaces the current schedule.`))
+      return;
+    replaceMonth.mutate(snap.rows);
   };
 
   const handleExport = async () => {
@@ -228,7 +250,9 @@ export function SchedulePage() {
         isEditor={isEditor}
         signedIn={!!session}
         onGenerate={handleGenerate}
-        generating={replaceMonth.isPending}
+        generating={replaceMonth.isPending || saveSnapshot.isPending}
+        onRevert={handleRevert}
+        canRevert={!!snapshotQuery.data}
         onExport={handleExport}
         onSignIn={() => setShowSignIn(true)}
         onSignOut={signOut}

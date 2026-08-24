@@ -1,7 +1,7 @@
 // Hand-written DB row types mirroring supabase/migrations.
 // (Regenerate with `supabase gen types typescript` once the project is linked.)
 
-import type { Location, Role, WeekdayLocation } from '@/engine/types';
+import type { Assignment, Location, Role, WeekdayLocation } from '@/engine/types';
 
 export type AppRole = 'editor' | 'viewer';
 
@@ -62,6 +62,12 @@ export type HiddenMonthRow = {
   month: string;
 }
 
+export type ScheduleSnapshotRow = {
+  month: string;
+  taken_at: string;
+  rows: Assignment[];
+}
+
 export type DismissedWarningRow = {
   date: string;
   type: string;
@@ -90,6 +96,7 @@ export interface Database {
       monthly_holidays: Table<MonthlyHolidayRow, MonthlyHolidayRow>;
       published_months: Table<PublishedMonthRow, PublishedMonthRow>;
       hidden_months: Table<HiddenMonthRow, HiddenMonthRow>;
+      schedule_snapshots: Table<ScheduleSnapshotRow, ScheduleSnapshotRow>;
       daily_assignments: Table<DailyAssignmentRow, Omit<DailyAssignmentRow, 'id'>>;
       dismissed_warnings: Table<DismissedWarningRow, DismissedWarningRow>;
       app_users: Table<AppUserRow>;

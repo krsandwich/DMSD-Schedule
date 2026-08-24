@@ -47,6 +47,44 @@ export function useReplaceMonth(month: Date) {
   });
 }
 
+/**
+ * Regenerate ONE person's assignments for the month, leaving everyone else's rows
+ * untouched. Deletes only this staff member's rows in the month range, then inserts
+ * their freshly generated working days. Used by the per-person "Generate" button in
+ * monthly setup so adding a new hire (or re-running one person) never clears the
+ * whole schedule the way {@link useReplaceMonth} does.
+ */
+export function useReplacePersonMonth(month: Date) {
+  const { start, end } = monthRange(month);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      staffId,
+      assignments,
+    }: {
+      staffId: string;
+      assignments: Assignment[];
+    }) => {
+      const del = await supabase
+        .from('daily_assignments')
+        .delete()
+        .eq('staff_id', staffId)
+        .gte('date', start)
+        .lte('date', end);
+      if (del.error) throw del.error;
+      // Only this person's working days (off staff carry no row).
+      const rows = assignments
+        .filter((a) => a.staffId === staffId && a.location !== 'off')
+        .map(assignmentToRow);
+      if (rows.length) {
+        const ins = await supabase.from('daily_assignments').insert(rows);
+        if (ins.error) throw ins.error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: assignmentsKey(month) }),
+  });
+}
+
 /** Upsert a single assignment (used after a drag-drop or toggle edit). */
 export function useUpsertAssignment(month: Date) {
   const qc = useQueryClient();

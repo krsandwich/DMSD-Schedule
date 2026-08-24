@@ -66,6 +66,35 @@ describe('Step 9 — warnings', () => {
     expect(w).toContain('ma_location_mismatch');
   });
 
+  it('warns when more than one person is designated MOD', () => {
+    // Simulates a person being regenerated independently: their own row picks a
+    // fresh MOD without clearing whoever else already held it (see
+    // useReplacePersonMonth), so two rows can end up isMod: true for the same day.
+    const { assignments, index } = fullDay(allWorking(staff));
+    const currentMod = assignments.find((a) => a.isMod);
+    expect(currentMod).toBeDefined();
+    const other = assignments.find((a) => !a.isMod && a.staffId !== currentMod!.staffId);
+    expect(other).toBeDefined();
+    const withTwoMods = assignments.map((a) =>
+      a.staffId === other!.staffId ? { ...a, isMod: true } : a,
+    );
+    const types = computeWarnings('2026-06-01', withTwoMods, staff, index).map((w) => w.type);
+    expect(types).toContain('multiple_mod');
+    expect(types).not.toContain('no_mod');
+  });
+
+  it('warns on a PCC/concierge assigned to cover a target at a different location', () => {
+    const { assignments, index } = fullDay(allWorking(staff));
+    const pcc = assignments.find((a) => a.pccCoversIds.length > 0);
+    expect(pcc).toBeDefined();
+    const target = pcc!.pccCoversIds[0];
+    const targetAssignment = assignments.find((a) => a.staffId === target);
+    expect(targetAssignment).toBeDefined();
+    targetAssignment!.location = targetAssignment!.location === 'kona' ? 'waimea' : 'kona';
+    const types = computeWarnings('2026-06-01', assignments, staff, index).map((w) => w.type);
+    expect(types).toContain('pcc_location_mismatch');
+  });
+
   it('warns when a coverage target has no PCC', () => {
     let patterns = allWorking(staff);
     for (const id of ['wendy', 'kalea', 'ellis', 'christie', 'raella', 'maile']) {

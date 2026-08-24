@@ -107,11 +107,13 @@ export interface Assignment {
 
 export type WarningType =
   | 'no_mod'
+  | 'multiple_mod'
   | 'provider_no_ma'
   | 'provider_too_many_ma'
   | 'out_provider_no_coverage'
   | 'ma_location_mismatch'
-  | 'target_no_pcc';
+  | 'target_no_pcc'
+  | 'pcc_location_mismatch';
 
 export interface Warning {
   /** ISO yyyy-MM-dd. */

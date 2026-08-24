@@ -11,3 +11,10 @@ dist-ssr
 coverage
 *.tsbuildinfo
 .env
+
+# In case BACKUP_DIR is ever pointed inside the repo (default is outside it —
+# see scripts/README-backups.md). These contain sensitive data.
+DMSD-Schedule-Backups/
+
+# Local Supabase CLI cache (linked project ref, versions) — machine-specific.
+supabase/.temp/

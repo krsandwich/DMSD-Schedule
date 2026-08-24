@@ -10,6 +10,10 @@ interface Props {
   isEditor: boolean;
   onGenerate: () => void;
   generating: boolean;
+  /** Restore the schedule to the snapshot taken before the last Generate. */
+  onRevert: () => void;
+  /** A snapshot exists to revert to. */
+  canRevert: boolean;
   onExport: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
@@ -26,6 +30,8 @@ export function Toolbar({
   isEditor,
   onGenerate,
   generating,
+  onRevert,
+  canRevert,
   onExport,
   onSignIn,
   onSignOut,
@@ -79,6 +85,16 @@ export function Toolbar({
             <Button onClick={onGenerate} disabled={generating}>
               {generating ? 'Generating…' : 'Generate month'}
             </Button>
+            {canRevert && (
+              <Button
+                variant="secondary"
+                onClick={onRevert}
+                disabled={generating}
+                title="Restore the schedule to just before the last Generate (undoes the generate and keeps your manual edits)"
+              >
+                ↩ Revert last Generate
+              </Button>
+            )}
             <Button
               variant={isPublished ? 'secondary' : 'primary'}
               onClick={onTogglePublish}

@@ -22,13 +22,23 @@ export function computeWarnings(
   };
   const name = (id: string) => staffById.get(id)?.displayName ?? id;
 
-  // No MOD designated.
-  if (!dayAssignments.some((a) => a.isMod)) {
+  // Exactly one MOD designated. Two people can both end up flagged MOD when a
+  // person is regenerated independently (see useReplacePersonMonth) — their own
+  // row picks a fresh MOD without clearing whoever already held it.
+  const mods = dayAssignments.filter((a) => a.isMod);
+  if (mods.length === 0) {
     warnings.push({
       date: isoDate,
       type: 'no_mod',
       refKey: 'mod',
       message: 'No MOD designated for this day.',
+    });
+  } else if (mods.length > 1) {
+    warnings.push({
+      date: isoDate,
+      type: 'multiple_mod',
+      refKey: 'mod',
+      message: `Multiple MODs designated: ${mods.map((m) => name(m.staffId)).join(', ')}.`,
     });
   }
 
@@ -83,6 +93,25 @@ export function computeWarnings(
           a.assignedProviderId,
         )} (${provider.location}).`,
       });
+    }
+  }
+
+  // PCC / concierge location must match the target they're covering. Same hard
+  // constraint as MA-to-provider; can go stale when a target is regenerated
+  // independently and its location changes (see useReplacePersonMonth).
+  for (const a of dayAssignments) {
+    for (const targetId of a.pccCoversIds) {
+      const target = byStaff.get(targetId);
+      if (target && target.location !== a.location) {
+        warnings.push({
+          date: isoDate,
+          type: 'pcc_location_mismatch',
+          refKey: `${a.staffId}:${targetId}`,
+          message: `${name(a.staffId)} (${a.location}) covers ${name(targetId)} (${
+            target.location
+          }).`,
+        });
+      }
     }
   }
 

@@ -1,13 +1,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { MonthlyPattern, Staff, WeekdayLocation } from '@/engine/types';
+import { generateMonth } from '@/engine';
 import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
 import { useMonthHolidays, useSaveHolidays } from '@/hooks/useMonthHolidays';
+import { useReplacePersonMonth } from '@/hooks/useAssignments';
 import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { format } from 'date-fns';
-import { monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
+import { daysToIso, monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
 import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
 import { SELECTABLE_WEEKDAY_LOCATIONS, WEEKDAY_LOCATION_LABEL } from '@/lib/locations';
 import { WEEKDAY_LABELS } from '@/lib/dates';
@@ -120,9 +122,14 @@ export function MonthlySetupPage() {
   const staffQuery = useStaff();
   const patternsQuery = useMonthlyPatterns(month);
   const priorPatternsQuery = useMonthlyPatterns(previousMonth(month));
+  // Next month's patterns + holidays feed per-person generation: a month renders as
+  // whole Mon–Fri weeks, so its trailing days resolve against next month's setup.
+  const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
+  const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
   const savePattern = useSavePattern(month);
   const holidaysQuery = useMonthHolidays(month);
   const saveHolidays = useSaveHolidays(month);
+  const replacePerson = useReplacePersonMonth(month);
   const hiddenQuery = useHiddenMonths();
   const setHidden = useSetMonthHidden();
 
@@ -150,10 +157,34 @@ export function MonthlySetupPage() {
     () => staff.filter((s) => s.receivesMas).sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [staff],
   );
+  const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [holidayText, setHolidayText] = useState('');
   const [status, setStatus] = useState('');
+  // Which staff row is mid-generation (disables just that row's button).
+  const [genId, setGenId] = useState<string | null>(null);
+
+  // --- Autosave -----------------------------------------------------------
+  // Edits persist automatically (per row, debounced) via the single-row pattern
+  // upsert, so there is no "Save all" button. A synchronous mirror of `drafts`
+  // lets edit handlers read the latest draft without waiting for a re-render.
+  const draftsRef = useRef<Record<string, Draft>>({});
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Keys with a pending debounce timer or an in-flight save (staff id, or
+  // '__holidays__'); drives the "Saving… / All changes saved" indicator.
+  const pending = useRef<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [everSaved, setEverSaved] = useState(false);
+  const refreshBusy = () => setBusy(pending.current.size > 0);
+
+  // Cancel any outstanding debounce timers on unmount.
+  useEffect(
+    () => () => {
+      for (const t of Object.values(saveTimers.current)) clearTimeout(t);
+    },
+    [],
+  );
 
   // Load the month's holidays into the editable field.
   useEffect(() => {
@@ -161,9 +192,16 @@ export function MonthlySetupPage() {
     setHolidayText(formatDayRanges(holidaysQuery.data));
   }, [holidaysQuery.data]);
 
-  // Initialise drafts from existing patterns (or empty).
+  // Hydrate drafts from saved patterns (or seeded defaults) ONCE per month. After
+  // that, the on-screen drafts own the state: because autosave invalidates the
+  // patterns query, re-hydrating on every refetch would clobber whatever the user
+  // is mid-typing. Changing month re-hydrates for the new month.
+  const hydratedMonth = useRef<string | null>(null);
   useEffect(() => {
     if (!staff.length || !patternsQuery.data) return;
+    const key = monthKey(month);
+    if (hydratedMonth.current === key) return;
+    hydratedMonth.current = key;
     const byStaff = new Map(patternsQuery.data.map((p) => [p.staffId, p]));
     const idByName = new Map(staff.map((x) => [x.displayName, x.id]));
     const next: Record<string, Draft> = {};
@@ -171,22 +209,68 @@ export function MonthlySetupPage() {
       const p = byStaff.get(s.id);
       next[s.id] = p ? draftFromPattern(p, s, idByName) : defaultDraft(s, idByName);
     }
+    draftsRef.current = next;
     setDrafts(next);
-  }, [staff, patternsQuery.data]);
+  }, [staff, patternsQuery.data, month]);
 
   if (!isEditor) return <Navigate to="/" replace />;
   if (staffQuery.isLoading || patternsQuery.isLoading) return <Spinner />;
 
+  const draftOf = (staffId: string): Draft => draftsRef.current[staffId] ?? emptyDraft();
+
+  // Debounced per-row autosave: coalesces rapid edits (typing) into one upsert
+  // ~700ms after the last change to that row.
+  const scheduleSave = (staffId: string, draft: Draft) => {
+    const s = staffById.get(staffId);
+    if (!s) return;
+    pending.current.add(staffId);
+    refreshBusy();
+    clearTimeout(saveTimers.current[staffId]);
+    saveTimers.current[staffId] = setTimeout(async () => {
+      try {
+        await savePattern.mutateAsync({ ...draftToPattern(s, draft), month: monthKey(month) });
+        setEverSaved(true);
+      } catch (e) {
+        setStatus('Autosave failed: ' + errorMessage(e));
+      } finally {
+        pending.current.delete(staffId);
+        refreshBusy();
+      }
+    }, 700);
+  };
+
+  // Apply an edit: update the draft (state + synchronous mirror) and autosave it.
+  const commit = (staffId: string, next: Draft) => {
+    draftsRef.current = { ...draftsRef.current, [staffId]: next };
+    setDrafts(draftsRef.current);
+    scheduleSave(staffId, next);
+  };
+
   const setChoice = (staffId: string, wd: number, value: WeekdayChoice) =>
-    setDrafts((d) => ({
-      ...d,
-      [staffId]: { ...d[staffId], byWeekday: { ...d[staffId].byWeekday, [wd]: value } },
-    }));
+    commit(staffId, {
+      ...draftOf(staffId),
+      byWeekday: { ...draftOf(staffId).byWeekday, [wd]: value },
+    });
 
   const setField = (staffId: string, patch: Partial<Draft>) =>
-    setDrafts((d) => ({ ...d, [staffId]: { ...d[staffId], ...patch } }));
+    commit(staffId, { ...draftOf(staffId), ...patch });
 
   const setOffText = (staffId: string, offText: string) => setField(staffId, { offText });
+
+  // Holidays autosave on blur (a single field, so no per-keystroke debounce).
+  const saveHolidaysNow = async () => {
+    pending.current.add('__holidays__');
+    refreshBusy();
+    try {
+      await saveHolidays.mutateAsync(parseDayRanges(holidayText));
+      setEverSaved(true);
+    } catch (e) {
+      setStatus('Holiday autosave failed: ' + errorMessage(e));
+    } finally {
+      pending.current.delete('__holidays__');
+      refreshBusy();
+    }
+  };
 
   const setDefaultChoice = (staffId: string, value: string) =>
     setField(staffId, { defaultTargetId: value || null });
@@ -197,7 +281,9 @@ export function MonthlySetupPage() {
   };
 
   // Carry forward usual weekdays + locations from the prior month (not time off).
-  const carryForward = () => {
+  // An explicit bulk action, so it persists every carried row immediately (only the
+  // rows that actually had a prior-month pattern — people with none are left alone).
+  const carryForward = async () => {
     const prior = priorPatternsQuery.data;
     if (!prior?.length) {
       setStatus('No prior month to carry forward from.');
@@ -205,24 +291,45 @@ export function MonthlySetupPage() {
     }
     const byStaff = new Map(prior.map((p) => [p.staffId, p]));
     const idByName = new Map(staff.map((x) => [x.displayName, x.id]));
-    setDrafts((current) => {
-      const next = { ...current };
-      for (const s of staff) {
-        const p = byStaff.get(s.id);
-        if (!p) continue;
-        const d = draftFromPattern(p, s, idByName);
-        // Carry weekday patterns + defaults/ranks; keep this month's requested time
-        // off and additional days (both are month-specific, not carried).
-        next[s.id] = {
-          ...d,
-          offText: current[s.id]?.offText ?? '',
-          addlText: current[s.id]?.addlText ?? '',
-          addlLocation: current[s.id]?.addlLocation ?? 'off',
-        };
+    const base = draftsRef.current;
+    const next = { ...base };
+    const carried: string[] = [];
+    for (const s of staff) {
+      const p = byStaff.get(s.id);
+      if (!p) continue;
+      const d = draftFromPattern(p, s, idByName);
+      // Carry weekday patterns + defaults/ranks; keep this month's requested time
+      // off and additional days (both are month-specific, not carried).
+      next[s.id] = {
+        ...d,
+        offText: base[s.id]?.offText ?? '',
+        addlText: base[s.id]?.addlText ?? '',
+        addlLocation: base[s.id]?.addlLocation ?? 'off',
+      };
+      carried.push(s.id);
+    }
+    draftsRef.current = next;
+    setDrafts(next);
+
+    pending.current.add('__carry__');
+    refreshBusy();
+    try {
+      for (const id of carried) {
+        const s = staffById.get(id);
+        if (s) await savePattern.mutateAsync({ ...draftToPattern(s, next[id]), month: monthKey(month) });
       }
-      return next;
-    });
-    setStatus('Carried forward weekday patterns from ' + monthLabel(previousMonth(month)) + '.');
+      setEverSaved(true);
+      setStatus(
+        `Carried forward ${carried.length} pattern${carried.length === 1 ? '' : 's'} from ` +
+          monthLabel(previousMonth(month)) +
+          '.',
+      );
+    } catch (e) {
+      setStatus('Carry forward failed: ' + errorMessage(e));
+    } finally {
+      pending.current.delete('__carry__');
+      refreshBusy();
+    }
   };
 
   const draftToPattern = (s: Staff, d: Draft): MonthlyPattern => {
@@ -252,18 +359,49 @@ export function MonthlySetupPage() {
     };
   };
 
-  const saveAll = async () => {
-    setStatus('Saving…');
+  // Generate ONE person into the existing schedule without clearing anyone else's.
+  // Saves this row's pattern, runs the same engine as "Generate month" against the
+  // whole roster (so cross-person placement — MA→provider, coverage, PCC — is
+  // consistent), then persists only this person's working days. Non-destructive to
+  // every other staff member's rows.
+  const generatePerson = async (s: Staff) => {
+    const d = draftOf(s.id);
+    setGenId(s.id);
+    setStatus(`Generating ${s.displayName}…`);
     try {
-      await saveHolidays.mutateAsync(parseDayRanges(holidayText));
-      for (const s of staff) {
-        const d = drafts[s.id];
-        if (!d) continue;
-        await savePattern.mutateAsync(draftToPattern(s, d));
-      }
-      setStatus('Saved all patterns for ' + monthLabel(month) + '.');
+      // Cancel this row's pending autosave — we persist it explicitly below.
+      clearTimeout(saveTimers.current[s.id]);
+      pending.current.delete(s.id);
+      refreshBusy();
+      const targetPattern: MonthlyPattern = { ...draftToPattern(s, d), month: monthKey(month) };
+      // Persist this row's setup so the schedule and setup stay in sync.
+      await savePattern.mutateAsync(targetPattern);
+
+      // Cross-person context: every other person's saved pattern for this month +
+      // next month's patterns (for the trailing spill-over days), with this person's
+      // just-edited draft swapped in. Mirrors SchedulePage's handleGenerate inputs.
+      const others = (patternsQuery.data ?? []).filter((p) => p.staffId !== s.id);
+      const patterns = [...others, targetPattern, ...(nextPatternsQuery.data ?? [])];
+      const holidays = new Set([
+        ...daysToIso(month, parseDayRanges(holidayText)),
+        ...daysToIso(nextMonth(month), nextHolidaysQuery.data ?? []),
+      ]);
+
+      const { assignments } = generateMonth({ staff, patterns, month, holidays });
+      const mine = assignments.filter((a) => a.staffId === s.id && a.location !== 'off');
+      await replacePerson.mutateAsync({ staffId: s.id, assignments: mine });
+
+      setStatus(
+        mine.length
+          ? `Added ${s.displayName} to the ${monthLabel(month)} schedule (${mine.length} day${
+              mine.length === 1 ? '' : 's'
+            }).`
+          : `${s.displayName} has no working days in ${monthLabel(month)} — schedule cleared for them.`,
+      );
     } catch (e) {
-      setStatus('Save failed: ' + errorMessage(e));
+      setStatus('Generate failed: ' + errorMessage(e));
+    } finally {
+      setGenId(null);
     }
   };
 
@@ -308,9 +446,12 @@ export function MonthlySetupPage() {
           <Button variant="secondary" onClick={carryForward}>
             Carry forward
           </Button>
-          <Button onClick={saveAll} disabled={savePattern.isPending}>
-            Save all
-          </Button>
+          <span
+            className="min-w-28 text-right text-xs text-gray-400"
+            title="Changes save automatically as you edit"
+          >
+            {busy ? 'Saving…' : everSaved ? 'All changes saved ✓' : ''}
+          </span>
         </div>
       </header>
 
@@ -326,6 +467,7 @@ export function MonthlySetupPage() {
               value={holidayText}
               placeholder="1, 4-5"
               onChange={(e) => setHolidayText(e.target.value)}
+              onBlur={saveHolidaysNow}
             />
           </div>
         </div>
@@ -343,6 +485,7 @@ export function MonthlySetupPage() {
               <th className="p-2">Additional days</th>
               <th className="p-2">Additional days location</th>
               <th className="p-2">Defaults &amp; ranks</th>
+              <th className="p-2 text-right">Generate</th>
             </tr>
           </thead>
           <tbody>
@@ -354,7 +497,7 @@ export function MonthlySetupPage() {
                   {showGroupHeader && (
                     <tr className="bg-gray-50">
                       <td
-                        colSpan={WEEKDAYS.length + 5}
+                        colSpan={WEEKDAYS.length + 6}
                         className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-gray-500"
                       >
                         {ROLE_LABEL[s.role]}
@@ -421,6 +564,19 @@ export function MonthlySetupPage() {
                         onModRank={(v) => setField(s.id, { modRank: parseRank(v) })}
                         onShippingRank={(v) => setField(s.id, { shippingRank: parseRank(v) })}
                       />
+                    </td>
+                    <td className="p-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => generatePerson(s)}
+                        disabled={genId !== null}
+                        title={`Generate ${s.displayName} into the ${monthLabel(
+                          month,
+                        )} schedule (does not clear anyone else)`}
+                        className="inline-flex w-24 items-center justify-center whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+                      >
+                        {genId === s.id ? '…' : '⚡ Generate'}
+                      </button>
                     </td>
                   </tr>
                 </Fragment>
