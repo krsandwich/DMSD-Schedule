@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { MonthlyPattern, Staff, WeekdayLocation } from '@/engine/types';
-import { generateMonth } from '@/engine';
+import { generatePersonMonth } from '@/engine';
 import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
 import { useMonthHolidays, useSaveHolidays } from '@/hooks/useMonthHolidays';
-import { useReplacePersonMonth } from '@/hooks/useAssignments';
+import { useAssignments, useReplacePersonMonth } from '@/hooks/useAssignments';
 import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { format } from 'date-fns';
 import { daysToIso, monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
@@ -24,7 +24,7 @@ import {
   defaultWeekdayLocations,
 } from '@/lib/defaultPatterns';
 import { Button } from '@/components/common/Button';
-import { Spinner } from '@/components/common/Spinner';
+import { Spinner, InlineSpinner } from '@/components/common/Spinner';
 
 /** Pull a human-readable message out of an Error or a Supabase PostgrestError object. */
 function errorMessage(e: unknown): string {
@@ -126,6 +126,10 @@ export function MonthlySetupPage() {
   // whole Mon–Fri weeks, so its trailing days resolve against next month's setup.
   const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
   const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
+  // The month's currently-persisted assignments — per-person generate needs
+  // these to place the target correctly around who's already assigned,
+  // instead of re-simulating the whole day blind to existing state.
+  const assignmentsQuery = useAssignments(month);
   const savePattern = useSavePattern(month);
   const holidaysQuery = useMonthHolidays(month);
   const saveHolidays = useSaveHolidays(month);
@@ -286,7 +290,7 @@ export function MonthlySetupPage() {
   const carryForward = async () => {
     const prior = priorPatternsQuery.data;
     if (!prior?.length) {
-      setStatus('No prior month to carry forward from.');
+      setStatus('No prior month to copy from.');
       return;
     }
     const byStaff = new Map(prior.map((p) => [p.staffId, p]));
@@ -320,12 +324,12 @@ export function MonthlySetupPage() {
       }
       setEverSaved(true);
       setStatus(
-        `Carried forward ${carried.length} pattern${carried.length === 1 ? '' : 's'} from ` +
+        `Copied ${carried.length} pattern${carried.length === 1 ? '' : 's'} from ` +
           monthLabel(previousMonth(month)) +
           '.',
       );
     } catch (e) {
-      setStatus('Carry forward failed: ' + errorMessage(e));
+      setStatus('Copy last month failed: ' + errorMessage(e));
     } finally {
       pending.current.delete('__carry__');
       refreshBusy();
@@ -360,10 +364,11 @@ export function MonthlySetupPage() {
   };
 
   // Generate ONE person into the existing schedule without clearing anyone else's.
-  // Saves this row's pattern, runs the same engine as "Generate month" against the
-  // whole roster (so cross-person placement — MA→provider, coverage, PCC — is
-  // consistent), then persists only this person's working days. Non-destructive to
-  // every other staff member's rows.
+  // Saves this row's pattern, then places the target around who's ALREADY really
+  // assigned that month (generatePersonMonth) — not a from-scratch simulation
+  // blind to existing state, which is what let independent per-person generates
+  // pile every new MA onto the same top-priority provider. Persists only this
+  // person's working days; every other staff member's rows are untouched.
   const generatePerson = async (s: Staff) => {
     const d = draftOf(s.id);
     setGenId(s.id);
@@ -387,8 +392,14 @@ export function MonthlySetupPage() {
         ...daysToIso(nextMonth(month), nextHolidaysQuery.data ?? []),
       ]);
 
-      const { assignments } = generateMonth({ staff, patterns, month, holidays });
-      const mine = assignments.filter((a) => a.staffId === s.id && a.location !== 'off');
+      const mine = generatePersonMonth({
+        staffId: s.id,
+        staff,
+        patterns,
+        month,
+        holidays,
+        existingAssignments: assignmentsQuery.data ?? [],
+      }).filter((a) => a.location !== 'off');
       await replacePerson.mutateAsync({ staffId: s.id, assignments: mine });
 
       setStatus(
@@ -443,8 +454,8 @@ export function MonthlySetupPage() {
           >
             {isHidden ? 'Unhide month' : 'Hide month'}
           </Button>
-          <Button variant="secondary" onClick={carryForward}>
-            Carry forward
+          <Button variant="secondary" onClick={carryForward} title="Copy weekday/location patterns from last month (not time off)">
+            Copy last month
           </Button>
           <span
             className="min-w-28 text-right text-xs text-gray-400"
@@ -573,9 +584,16 @@ export function MonthlySetupPage() {
                         title={`Generate ${s.displayName} into the ${monthLabel(
                           month,
                         )} schedule (does not clear anyone else)`}
-                        className="inline-flex w-24 items-center justify-center whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+                        className="inline-flex w-28 items-center justify-center gap-1.5 whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-40"
                       >
-                        {genId === s.id ? '…' : '⚡ Generate'}
+                        {genId === s.id ? (
+                          <>
+                            <InlineSpinner />
+                            Generating
+                          </>
+                        ) : (
+                          '⚡ Generate'
+                        )}
                       </button>
                     </td>
                   </tr>

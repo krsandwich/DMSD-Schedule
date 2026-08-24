@@ -144,5 +144,21 @@ export interface GenerateMonthResult {
   warnings: Warning[];
 }
 
+export interface GeneratePersonMonthInput {
+  staffId: string;
+  staff: Staff[];
+  patterns: MonthlyPattern[];
+  month: Date;
+  holidays?: Set<string>;
+  /**
+   * The month's currently-persisted assignments. Every staff member OTHER
+   * than `staffId` is treated as locked/real and left exactly as-is; only
+   * `staffId`'s own slot (MA/PCC/MOD/coverage placement) is computed fresh,
+   * correctly aware of who's already assigned rather than re-simulating the
+   * whole day from scratch.
+   */
+  existingAssignments: Assignment[];
+}
+
 /** Mutable per-day working set, keyed by staffId. */
 export type DayMap = Map<string, Assignment>;

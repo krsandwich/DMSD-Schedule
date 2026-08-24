@@ -42,17 +42,36 @@ export function assignMAs(
     return !!a && !a.isMod && a.assignedProviderId === null;
   });
 
-  const counts = new Map<string, number>(); // providerId -> MAs assigned
+  // providerId -> MAs assigned. Seeded from whatever's already on `day` (e.g. a
+  // provider who already has a real MA locked in via generatePersonMonth's
+  // overlay) so an already-satisfied provider isn't given another; on a fresh
+  // day map (the normal full-month generate) every count starts at 0 as before.
+  const counts = new Map<string, number>();
+  for (const [, a] of day) {
+    if (a.assignedProviderId) counts.set(a.assignedProviderId, (counts.get(a.assignedProviderId) ?? 0) + 1);
+  }
   const locationOf = (p: Staff) => day.get(p.id)?.location ?? 'off';
 
   const assignTo = (ma: Staff, provider: Staff) => {
-    const current = counts.get(provider.id) ?? 0;
+    // Pick the lowest slot number NOT already taken for this provider, rather
+    // than assuming slot 1 always fills before slot 2 — a provider's existing
+    // real MA can already occupy either slot (e.g. after independent
+    // per-person regenerates filled them out of order), so blindly using
+    // "count + 1" can collide with an already-taken slot 2 while slot 1 sits
+    // empty.
+    const takenSlots = new Set<number>();
+    for (const [, existing] of day) {
+      if (existing.assignedProviderId === provider.id && existing.maSlot != null) {
+        takenSlots.add(existing.maSlot);
+      }
+    }
+    const slot = takenSlots.has(1) ? 2 : 1;
     const a = day.get(ma.id);
     if (a) {
       a.assignedProviderId = provider.id;
-      a.maSlot = current + 1;
+      a.maSlot = slot;
     }
-    counts.set(provider.id, current + 1);
+    counts.set(provider.id, (counts.get(provider.id) ?? 0) + 1);
     pool = pool.filter((m) => m.id !== ma.id);
   };
 
@@ -73,8 +92,11 @@ export function assignMAs(
     return true;
   };
 
-  // 1. Every working provider gets one MA, in priority order.
-  for (const provider of providers) place(provider);
+  // 1. Every working provider gets one MA, in priority order — but only if they
+  //    don't already have one (real or freshly assigned this run).
+  for (const provider of providers) {
+    if ((counts.get(provider.id) ?? 0) === 0) place(provider);
+  }
 
   // 2. Providers flagged "2 MAs" get a second MA, in priority order.
   for (const provider of providers) {

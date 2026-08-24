@@ -1,5 +1,6 @@
 export * from './types';
 export { generateMonth } from './generateMonth';
+export { generatePersonMonth } from './generatePersonMonth';
 export { computeWarnings } from './warnings';
 export { resolveAttendance, isWorking } from './attendance';
 export { assignMod } from './mod';

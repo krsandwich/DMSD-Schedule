@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { monthLabel, nextMonth, previousMonth } from '@/lib/dates';
 import { LOCATION_DOT, LOCATION_LABEL, SELECTABLE_LOCATIONS } from '@/lib/locations';
 import { Button } from '@/components/common/Button';
+import { InlineSpinner } from '@/components/common/Spinner';
 
 interface Props {
   month: Date;
@@ -83,6 +84,7 @@ export function Toolbar({
               <Button variant="secondary">Monthly setup</Button>
             </Link>
             <Button onClick={onGenerate} disabled={generating}>
+              {generating && <InlineSpinner />}
               {generating ? 'Generating…' : 'Generate month'}
             </Button>
             {canRevert && (

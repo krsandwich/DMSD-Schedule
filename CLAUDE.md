@@ -26,6 +26,7 @@ An internal scheduling app for a dermatology practice with three locations. **On
 | Drag-and-drop | **dnd-kit** | *Added.* Reassign staff between providers, locations, MOD, coverage, PCC targets. |
 | Dates | **date-fns** | *Added.* Lightweight weekday/range math. |
 | Tests | **Vitest** | *Added.* Unit-test the generation engine per rule. |
+| Excel export | **exceljs** | *Added.* Powers the calendar's "Export Excel" button (`src/lib/exportMonth.ts`). |
 
 **Why this stack fits:** Postgres models the relational roster/assignment data naturally; Supabase RLS enforces "only the Editor can write" at the database layer (not just the UI); Realtime makes the Viewer experience live for free.
 
@@ -107,7 +108,7 @@ PA Tricia, PA Natalie, Dr. Monica, RN Steph, PA Kendra, Dr. Shama.
 
 ## 5. Data model (Postgres / Supabase)
 
-Create via Supabase CLI migrations. Suggested schema — adapt naming as needed but preserve the relationships.
+Create via Supabase CLI migrations. Suggested schema — adapt naming as needed but preserve the relationships. *(This snippet is illustrative of the original design; it has since grown several columns/tables — see the "current schema" note right after it, and `/supabase/migrations` for the real source of truth.)*
 
 ```sql
 -- enums
@@ -145,6 +146,8 @@ create table monthly_patterns (
   usual_weekdays      int[] not null default '{}', -- 1=Mon .. 5=Fri
   location_by_weekday jsonb not null default '{}', -- {"1":"kona","2":"waimea"}
   requested_off_days  int[] not null default '{}', -- days of month, expanded from "1-3, 8-11"
+  additional_days     int[] not null default '{}', -- force-work days, inverse of requested_off_days
+  additional_days_location text,                   -- 'kona'|'waimea'|'remote'|'alternating'|'waimea_kona'|null; null/'off' = no effect
   unique (staff_id, month)
 );
 
@@ -162,6 +165,7 @@ create table daily_assignments (
   is_shipping          boolean not null default false,
   is_social_media      boolean not null default false,
   custom_text          text,
+  weekly_task_no       int,                            -- override for the derived weekly #1-6 MA task badge
   unique (date, staff_id)
 );
 
@@ -178,6 +182,25 @@ create table monthly_holidays (
   month date primary key,           -- first day of month
   days  int[] not null default '{}' -- e.g. {1,4,5}; holiday weekdays = office closed
 );
+
+-- a row present = that month is published (visible to Viewers); UI-only gate,
+-- not enforced by RLS (assignments stay publicly readable regardless)
+create table published_months (
+  month date primary key
+);
+
+-- a row present = that month is hidden from the Editor's default-landing search
+create table hidden_months (
+  month date primary key
+);
+
+-- snapshot of daily_assignments taken right before "Generate month" overwrites
+-- them, so the Editor can revert a generate (including manual edits) afterward
+create table schedule_snapshots (
+  month    date primary key,
+  taken_at timestamptz not null default now(),
+  rows     jsonb not null default '[]'  -- Assignment[] as of just before generation
+);
 ```
 
 **Weekly coverage counter** (for even coverage distribution) is **derived** — compute from `provider_coverage_ids` over the current week rather than storing it.
@@ -185,7 +208,7 @@ create table monthly_holidays (
 ### Auth / RLS
 - Login via Supabase email/password. The Editor types a **username**; the app appends `@drmonicascheel.com` and signs in. On first login, an `app_users` row is inserted; the Editor is promoted manually (seed/admin).
 - Helper: `is_editor()` returns true when the user is signed in (temporarily simplified — see `0003_all_editors.sql` / `setup_all.sql`; originally `app_role = 'editor'`).
-- RLS on `staff`, `monthly_patterns`, `monthly_holidays`, `daily_assignments`, `dismissed_warnings`: **publicly readable (`SELECT`, incl. logged-out viewers); only `is_editor()` may `INSERT/UPDATE/DELETE`.**
+- RLS on `staff`, `monthly_patterns`, `monthly_holidays`, `daily_assignments`, `dismissed_warnings`, `published_months`, `hidden_months`, `schedule_snapshots`: **publicly readable (`SELECT`, incl. logged-out viewers); only `is_editor()` may `INSERT/UPDATE/DELETE`.**
 
 ---
 
@@ -203,16 +226,17 @@ Resolve present/off for each staff member and set each present person's location
 - **Alternating locations:** a weekday set to `alternating` (Kona / Waimea) or `waimea_kona` (Waimea / Kona) switches every **two weeks within the month view** — weeks 1–2 = the first location, weeks 3–4 = the second, then the two-week block repeats (so a 5th week returns to the first). The block index resets at each month's first Monday. *(Changed from the earlier continuous weekly ISO-parity rotation per client request.)*
 
 ### Step 2 — MOD (exactly one per day)
-- Choose the highest-priority **working** MOD-eligible person: Keahi → Sara → Reina.
+- MOD is **data-driven**, not hard-coded: any staff member can be made MOD-eligible via a per-month **MOD rank** in Monthly Setup (`monthly_patterns.mod_rank`; 1 = highest priority). Keahi → Sara → Reina is the seeded default ranking, not a fixed rule.
+- Choose the **lowest-mod_rank person who is working AT KONA** that day — being MOD-ranked isn't enough; they must be scheduled at Kona. (This location gate isn't optional/configurable.)
 - MOD is **standalone**: remove that person from the MA pool; they are not placed under any provider.
-- If none is working → **warning** (a MOD must always exist).
+- If no eligible person is working at Kona → **warning** (`no_mod`; a MOD must always exist). If more than one person ends up flagged MOD the same day (can happen after regenerating one person independently — see §8) → separate **warning** (`multiple_mod`).
 
 ### Step 3 — Provider coverage
-- For each provider who is **OUT**, designate an in-office provider to cover their patients — **except RN Steph and Dr. Shama, who never need coverage when out.**
-- **Eligible coverers:** any in-office provider **except RN Steph**. Dr. Shama may cover.
+- **Data-driven, not name-hardcoded:** a per-month **Coverage** checkbox on each provider (`monthly_patterns.coverage`) means that provider both *needs* coverage when out and *can provide* it when in — there's no fixed Steph/Shama exception in code. (The seeded default leaves Steph/Shama unchecked, which is where the "they never need coverage" behavior actually comes from — it's editable, not enforced.)
+- For each **coverage-flagged** provider who is out, assign an in-office **coverage-flagged** provider to cover them.
 - One coverer may cover **multiple** absent providers; coverers keep their own patients too.
-- **Even distribution:** track each eligible coverer's coverage count for the current week; assign new coverage to the coverer with the **lowest weekly count** (tie-break by provider priority order). **Reset every Monday.**
-- Out provider with no eligible coverer in office → **warning**.
+- **Distribution, in order:** (1) fewest providers this coverer is *already covering today* — spreads same-day coverage across people before stacking a second onto anyone; (2) then lowest **running count for the whole month** (not reset weekly — it accumulates across the month); (3) then provider priority rank as the final tie-break.
+- Out provider (coverage-flagged) with no eligible coverer in office → **warning**.
 
 ### Step 4 — Assign MAs
 - Recipients: the **6 providers including RN Steph** (NOT RN Abby, NOT estheticians).
@@ -231,12 +255,12 @@ Resolve present/off for each staff member and set each present person's location
 - Targets needing coverage daily: **6 providers + 2 estheticians + RN Abby** (9 boxes).
 - Each PCC covers **1–2** targets as a soft goal but **may exceed 2** when needed.
 - **Gap-fill order:** assign the 4 PCCs first; cover any remaining targets with **Aesthetic Concierge (Raella, Maile)** acting as PCC.
-- **Location constraint (hard):** a PCC/concierge may only cover a target at the **same location** that day. A target with no same-location coverer is left uncovered → **warning**. *(Changed from the original soft preference per client request.)*
+- **Location constraint (hard):** a PCC/concierge may only cover a target at the **same location** that day. A target with no same-location coverer is left uncovered → **warning** (`target_no_pcc`). *(Changed from the original soft preference per client request.)* If a covering link ever ends up pointing at a target in a different location (e.g. after regenerating just the target — see §8), that's a separate **warning** (`pcc_location_mismatch`).
 
 ### Step 6 — Shipping
-- Per-day **Shipping checkbox** on each PCC and each Aesthetic Concierge.
-- **Multiple people may have Shipping** the same day.
-- Checked → 📦 emoji on that person's tile.
+- **Auto-assigned during generation**, not purely manual: the person with the lowest **Shipping rank** (`monthly_patterns.shipping_rank`, set in Monthly Setup) who is working **at Kona** gets Shipping for the day. If nobody is ranked/at Kona, that day's **MOD is the fallback**.
+- Only one person is auto-assigned this way, but the Editor can add or change Shipping for anyone, any day, in the tile editor — **multiple people may have Shipping** the same day.
+- 📦 emoji shows on every person with Shipping that day.
 
 ### Step 7 — Manual specials
 - Huaka → **Social Media** (manual toggle).
@@ -245,7 +269,7 @@ Resolve present/off for each staff member and set each present person's location
 - Free-text note field on every person, every day.
 
 ### Step 9 — Warnings (all dismissible; dismissals persist)
-Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out provider (other than Steph/Shama) has no coverage; an MA's location ≠ assigned provider's location; a coverage target has no PCC/concierge.
+Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the same day (`multiple_mod`); a working provider has 0 or >2 MAs (`provider_no_ma` / `provider_too_many_ma`); a coverage-flagged out provider has no coverage (`out_provider_no_coverage`); an MA's location ≠ their assigned provider's location (`ma_location_mismatch`); a coverage target has no PCC/concierge (`target_no_pcc`); a PCC/concierge's location ≠ a target they're covering (`pcc_location_mismatch`).
 
 ---
 
@@ -256,7 +280,9 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
 - **Holiday** weekdays render as a greyed-out column with a "Holiday" badge and no staff.
 - Tiles surface: location color, 📦 shipping, 📣 social media, MOD badge, coverage badge, custom-text indicator, and (for MAs) a `#N` **weekly task** badge. Request-off tiles render pink (see §4).
 - **Weekly MA tasks (`#1–6`):** a deterministic rotation among MAs who work at least one day that week and are not MOD-eligible, keyed by ISO week and recomputed from the roster (`src/engine/weeklyTasks.ts`), so new MAs join automatically. It's **derived, not stored** — but the Editor can override a person's number in the tile editor; the override is persisted per-assignment (`weekly_task_no`) and pinned across that whole week. **Generate month** clears overrides.
-- **Editor** can drag-and-drop to reassign across providers/locations/MOD/coverage/PCC targets; every drop re-runs validation (§9) and refreshes warnings live. **Viewers** get the same view, read-only.
+- **Editor** can **drag an MA tile onto a provider card** to reassign it (dnd-kit) — that's the only drag-and-drop interaction. Everything else (location, MOD, coverage, PCC targets, shipping, social-media, custom note) is changed by **clicking a tile** to open the `AssignmentEditor` panel. Every drop or edit re-runs validation (§9) and refreshes warnings live. **Viewers** get the same view, read-only.
+- **Generate month** rebuilds the whole displayed month from scratch (delete + regenerate) — it first snapshots the current schedule (`schedule_snapshots`), and a **"Revert last Generate"** toolbar button restores that snapshot, undoing the generate including any manual edits it wiped. Only the most recent snapshot per month is kept.
+- **Publish / Unpublish** toggle per month (`published_months`): Viewers only see months the Editor has published; an unpublished month shows a "hasn't been published yet" message to Viewers instead of the calendar. Editors always see everything regardless of publish state. This is a UI-only gate — RLS still allows public `SELECT` on the underlying data.
 - Use Supabase Realtime so Viewers reflect Editor edits without refreshing.
 
 ---
@@ -265,7 +291,10 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
 
 - A **Holidays** callout at the top: day-of-month ranges like `1, 4-5` (same parser), saved per month to `monthly_holidays`.
 - Per person: pick `usual_weekdays` and a location per selected weekday (Kona / Waimea / Remote, or the two-week alternating choices **Kona / Waimea** and **Waimea / Kona**); enter requested time off as ranges like `1-3, 8-11` (parse → expanded `int[]`); enter **Additional days** (same range parser) plus an **Additional days location**; plus per-row defaults/ranks (default provider/target, "2 MAs", coverage, provider/MOD/shipping ranks).
-- **First month is entered manually.** Later months copy `usual_weekdays` + `location_by_weekday` + defaults/ranks from the prior month via the explicit **Carry forward** button (all editable). `requested_off_days` **and** `additional_days` / `additional_days_location` are month-specific and do **not** carry over.
+- **Autosave:** every field change persists automatically (debounced) — there's no manual save step. A header status indicator shows "Saving…" / "All changes saved ✓".
+- **Per-person "⚡ Generate" button**, one per row, far right of the table: regenerates just that one staff member into the currently-viewed month using the full engine (so cross-person placement — MA→provider, coverage, PCC — stays consistent), but only writes **their own** rows. Everyone else's existing assignments (including manual edits) are left untouched. This is the way to add a newly-hired person into an already-generated month without wiping the rest of the schedule.
+- **First month is entered manually.** Later months copy `usual_weekdays` + `location_by_weekday` + defaults/ranks from the prior month via the explicit **Copy last month** button (all editable, saved immediately). `requested_off_days` **and** `additional_days` / `additional_days_location` are month-specific and do **not** carry over.
+- **Hide / Unhide month** toggle (`hidden_months`): hidden months are skipped when the Editor's calendar picks a default landing month, without affecting Viewer visibility (that's the separate Publish toggle in §7).
 - **Roster page:** add staff, deactivate/reactivate, and **permanently delete** inactive staff (erases their assignments + patterns; clears references from other rows).
 
 ---
@@ -291,7 +320,7 @@ Raise when: no MOD designated; a working provider has 0 (or >2) MAs; an out prov
   1. MA location must match the assigned provider's location (hard constraint).
   2. PCC/concierge location matching is now a HARD constraint (changed per client request); a target with no same-location coverer is left uncovered and warned.
   3. MOD required only on operating days (Mon–Fri); weekends out of scope.
-  4. "Even coverage" = coverage-assignment count per covering provider per week, reset Monday.
+  4. "Even coverage" = coverage-assignment count per covering provider, balanced first by same-day count then by a running **monthly** count (not reset weekly — see §6 Step 3).
   5. Estheticians and wellness receive no MAs; only the 6 providers do.
   6. MA distribution: one per provider (priority order), a second only for "2 MAs"-flagged providers; surplus MAs are left unassigned (changed per client request — was "Tricia gets 2, then balance evenly").
   7. Months span whole Mon–Fri weeks (week → month-of-its-Monday); trailing days resolve against the next month's patterns.
@@ -321,14 +350,21 @@ user in Supabase Auth. Temporarily, any signed-in user is treated as the editor
 (`0003_all_editors.sql` / `setup_all.sql`); the original per-`app_role` gating still lives in
 `0002_rls.sql`.
 
-**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0014_additional_days.sql`);
+**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0017_schedule_snapshots.sql`);
 roster is seeded by `/supabase/seed.sql`. `setup_all.sql` is a single idempotent
 drop-and-recreate of the whole schema (handy for the dashboard SQL Editor). Apply migrations with
 the Supabase CLI (`supabase db push`) — **new columns/tables must be applied to
 the DB before their features work** (e.g. `0013` adds `daily_assignments.weekly_task_no`; `0014`
-adds `monthly_patterns.additional_days` + `additional_days_location`). Regenerate `src/lib/database.types.ts` with
+adds `monthly_patterns.additional_days` + `additional_days_location`; `0015`/`0016` add
+`published_months` / `hidden_months`; `0017` adds `schedule_snapshots`). Regenerate `src/lib/database.types.ts` with
 `supabase gen types typescript` once the project is linked — note that table Row types must be
 `type` aliases, not `interface`s, or the typed client silently degrades to `never`.
+
+**Daily backups:** `scripts/backup-db.sh` + a macOS LaunchAgent (`scripts/com.dmsd-schedule.backup.plist`)
+export every publicly-readable table to JSON once a day (no `pg_dump`/Docker — that path needs Docker
+running, which isn't reliable for an unattended job; see `scripts/README-backups.md`). The *installed*,
+launchd-invoked copy lives outside the repo at `~/.dmsd-schedule/backup-db.sh` — launchd cannot read/execute
+a script located under `~/Desktop` (macOS TCC blocks it); keep the two in sync by hand if you edit the script.
 
 **Architecture notes specific to this build:**
 - Months are computed as whole Mon–Fri weeks via `monthWeekRange`/`weekdayRows`/`monthRange`
@@ -350,4 +386,14 @@ adds `monthly_patterns.additional_days` + `additional_days_location`). Regenerat
   reassign, or click any tile to open `AssignmentEditor`, which covers location, MOD, coverage,
   PCC targets, shipping, social-media, and the custom note in one panel.
 - `useReplaceMonth` persists only present staff (`location !== 'off'`); off staff are derived from
-  the roster in `buildDayModel`.
+  the roster in `buildDayModel`. It's a full delete-then-reinsert of the month's `daily_assignments` —
+  destructive to manual edits, which is why it snapshots first (see below).
+- `useReplacePersonMonth` (Monthly Setup's per-person "⚡ Generate") is the non-destructive counterpart:
+  it deletes and reinserts rows scoped to **one `staff_id`** only, leaving every other staff member's
+  rows untouched, so a newly-added person can be generated into an already-generated, hand-edited month.
+- `schedule_snapshots` + `useScheduleSnapshot`/`useSaveSnapshot` back "Generate month"'s undo: the current
+  month's assignments are captured right before the destructive replace, and "Revert last Generate" in
+  the toolbar restores that snapshot (one snapshot kept per month, overwritten each generate).
+- `published_months` / `hidden_months` are both simple presence-tables (`month` primary key) gating,
+  respectively, Viewer visibility (§7) and which month the Editor's calendar defaults to (§8) — independent
+  of each other and of RLS, which still allows public `SELECT` on the underlying schedule data either way.

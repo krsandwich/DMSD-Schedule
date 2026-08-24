@@ -93,11 +93,12 @@ staff — the office is closed that day.
 
 Each month, the Editor does this:
 
-1. **Monthly setup** → set patterns, time off, and holidays → **Save all**.
+1. **Monthly setup** → set patterns, time off, and holidays (saves automatically as you go).
 2. Back on the calendar, pick the month with the **‹ ›** arrows.
 3. Click **Generate month**.
 4. Review warnings and **adjust by hand** as needed.
-5. **Export Excel** if you want a printable copy.
+5. Click **Publish** so Viewers can see it.
+6. **Export Excel** if you want a printable copy.
 
 The next sections cover each step in detail.
 
@@ -121,8 +122,8 @@ The table has one row per staff member, grouped by role:
 - **Mon–Fri columns** — choose each person's location for that weekday:
   - **—** = not working that day
   - **Kona**, **Waimea**, **Remote**
-  - **Kona / Waimea (alternating)** — switches between Kona and Waimea week to
-    week automatically.
+  - **Kona / Waimea (alternating)** — switches between Kona and Waimea every
+    **two weeks** automatically (weeks 1-2 at one, weeks 3-4 at the other).
 - **Requested off** — time-off days as ranges, e.g. `1-3, 8-11`.
 - **Defaults & ranks** — extra controls depending on role:
   - **Providers:** *Priority #* (MA-fill / tie-break order), **2 MAs** (this
@@ -131,19 +132,36 @@ The table has one row per staff member, grouped by role:
   - **MAs & support roles:** a default **Provider/target** (preferred pairing),
     plus **MOD #** and **📦 #** ranks (lower number = picked first).
 
-### Carry forward
+### ⚡ Generate (one person)
 
-Click **Carry forward** to copy the **previous month's** weekday patterns,
+Each row also has its own small **⚡ Generate** button, far right. Use it when
+you've added a **new person mid-month** and the rest of the calendar is already
+built: it fills in just that one person's schedule without touching anyone
+else's assignments or by-hand edits. (The big **Generate month** button on the
+calendar rebuilds *everyone* — see §6.)
+
+### Copy last month
+
+Click **Copy last month** to copy the **previous month's** weekday patterns,
 locations, defaults, and ranks into this month (all still editable). **Requested
 time off does _not_ carry over** — you re-enter it each month.
 
-### Save
+### Hide / Unhide month
 
-Click **Save all** to store everything (patterns + holidays) for the month.
-A status message confirms the save.
+Click **Hide month** on a month you don't need to see by default (e.g. a far-off
+future month). Hidden months still exist and can still be opened with the
+**‹ ›** arrows — they're just skipped when the app picks which month to open
+first. This is separate from **Publish/Unpublish**, which controls what
+Viewers see (see §6).
 
-> **Tip:** The very first month is entered by hand. After that, **Carry forward**
-> saves most of the typing.
+### Saving
+
+Every change (weekday/location, time off, defaults & ranks, holidays) saves
+automatically a moment after you make it — no separate save step. A status
+indicator in the header shows **Saving…** or **All changes saved ✓**.
+
+> **Tip:** The very first month is entered by hand. After that, **Copy last
+> month** saves most of the typing.
 
 ---
 
@@ -153,21 +171,38 @@ On the calendar, with the right month selected, click **Generate month**. The ap
 builds every weekday using these rules, in order:
 
 1. **Attendance & locations** — who's in, and where (holidays skipped entirely).
-2. **MOD** — exactly one Manager on Duty per day (priority **Keahi → Sara →
-   Reina**). The MOD is standalone and not given MAs.
-3. **Provider coverage** — for each absent provider who needs it, an in-office
-   provider is assigned to cover, spread evenly.
+2. **MOD** — exactly one Manager on Duty per day: whoever has the best **MOD #**
+   rank (set per person in Monthly Setup) **and is working at Kona** that day.
+   The MOD is standalone and not given MAs.
+3. **Provider coverage** — for each absent provider with the **Coverage** box
+   checked, an in-office provider who also has Coverage checked is assigned to
+   cover them, spread evenly.
 4. **Assign MAs** — every working provider gets **one** MA (in priority order),
    then providers flagged **"2 MAs"** get a **second**. Extra MAs are left
    unassigned. An MA can only go to a provider at the **same location**.
 5. **Assign PCCs / Aesthetic Concierge** — the 4 PCCs cover the providers,
    estheticians, and wellness; concierge fill any gaps. Coverage must be
    **same-location**.
-6. **Shipping** — assigned from the 📦 ranks.
+6. **Shipping** — the top **📦 #** rank who's working at Kona gets it
+   automatically; if nobody qualifies, that day's MOD gets it instead. You can
+   always add/change Shipping by hand afterward.
 
 > **Re-generating replaces the whole month.** Generate is destructive for that
 > month — it wipes the current days and rebuilds them, so any by-hand edits for
 > that month are lost. Set up first, generate once, then fine-tune by hand.
+>
+> **Changed your mind?** Right after generating, a **↩ Revert last Generate**
+> button appears next to it. Click it to restore the schedule to exactly how it
+> was the moment before you clicked Generate — by-hand edits included. Only the
+> most recent generate can be undone this way.
+
+### Publishing (making it visible to Viewers)
+
+A newly generated month isn't shown to Viewers until you **Publish** it — click
+**Publish** in the toolbar once you're happy with it. Until then, Viewers see a
+"hasn't been published yet" message instead of the calendar for that month. You
+(the Editor) always see every month regardless of publish state. Click
+**Unpublish** to hide a month from Viewers again.
 
 ---
 
@@ -195,6 +230,8 @@ that day:
 - **PCC covers** — for PCC/concierge, check which targets they coordinate.
 - **Shipping 📦** — toggle.
 - **Social Media 📣** — toggle (MAs).
+- **Weekly task #** — for MAs, overrides their auto-assigned `#1-6` task number
+  for the **whole week** (pins it, even if you edit a different day in that week).
 - **Custom note** — free text (shows on the tile in red with a 🖊️).
 
 Click **Save** to apply, or **Cancel** to discard. Click outside the panel or the
@@ -211,11 +248,13 @@ is remembered).
 | Warning | Meaning |
 |---|---|
 | **No MOD** | No Manager on Duty is designated that day. |
+| **Multiple MODs** | More than one person is marked MOD the same day (can happen after using ⚡ Generate on one person — see §5). |
 | **Provider has 0 MAs** | A working provider ended up with no MA. |
 | **Provider has too many MAs** | A provider has more than 2 MAs. |
 | **Out provider has no coverage** | An absent provider (who needs coverage) has nobody covering. |
 | **MA location mismatch** | An MA is under a provider at a different location. |
 | **Target has no PCC coverage** | A provider/esthetician/wellness has no same-location PCC. |
+| **PCC location mismatch** | A PCC/concierge is covering someone at a different location than themselves. |
 
 Fix a warning by editing the relevant tiles (reassign, change location, add
 coverage, etc.) or dismiss it if it's acceptable.
@@ -294,4 +333,10 @@ You're in Viewer mode. Click **Sign in** with the editor account.
 
 **My by-hand edits disappeared.**
 Someone clicked **Generate month**, which rebuilds the whole month from scratch.
-Re-do the edits, or set up the patterns so generation produces them automatically.
+If it just happened, click **↩ Revert last Generate** in the toolbar to get the
+prior schedule back (see §6). Otherwise, re-do the edits, or set up the
+patterns so generation produces them automatically.
+
+**A Viewer says they can't see a month I already built.**
+It hasn't been **Published** yet (see §6) — Viewers only see published months.
+Click **Publish** in the toolbar for that month.

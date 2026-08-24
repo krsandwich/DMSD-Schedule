@@ -28,14 +28,23 @@ export function assignCoverage(
 
   const providers = staff.filter((s) => s.role === 'provider');
 
+  // Already covered by someone (e.g. a coverer already locked in via
+  // generatePersonMonth's overlay) — don't cover them again.
+  const alreadyCovered = new Set<string>();
+  for (const [, a] of day) for (const id of a.providerCoverageIds) alreadyCovered.add(id);
+
   const outNeedingCoverage = providers
-    .filter((p) => hasCoverage(p.id) && !isWorking(day, p.id))
+    .filter((p) => hasCoverage(p.id) && !isWorking(day, p.id) && !alreadyCovered.has(p.id))
     .sort((a, b) => rank(a.id) - rank(b.id));
 
   const coverers = providers.filter((p) => hasCoverage(p.id) && isWorking(day, p.id));
 
   // How many absent providers each coverer is already covering on THIS day.
+  // Seeded from `day` so an already-locked coverer's real load counts toward
+  // "fewest covered today" instead of looking artificially free; on a fresh
+  // day map (normal full-month generate) every count starts at 0 as before.
   const todayCount: Record<string, number> = {};
+  for (const [id, a] of day) todayCount[id] = a.providerCoverageIds.length;
 
   for (const out of outNeedingCoverage) {
     if (coverers.length === 0) continue; // -> warning computed later

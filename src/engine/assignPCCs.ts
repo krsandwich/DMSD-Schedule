@@ -31,10 +31,17 @@ export function assignPCCs(
     (s) => s.role === 'aesthetic_concierge' && s.canPcc && isWorking(day, s.id),
   );
 
+  // Seeded from `day` so an already-locked PCC's real load/coverage counts (e.g.
+  // via generatePersonMonth's overlay) instead of looking artificially free; on a
+  // fresh day map (normal full-month generate) both start empty as before.
   const load = new Map<string, number>();
+  const covered = new Set<string>();
+  for (const [id, a] of day) {
+    if (a.pccCoversIds.length) load.set(id, a.pccCoversIds.length);
+    for (const t of a.pccCoversIds) covered.add(t);
+  }
   const loadOf = (id: string) => load.get(id) ?? 0;
   const locationOf = (id: string): Location | undefined => day.get(id)?.location;
-  const covered = new Set<string>();
 
   const cover = (covererId: string, targetId: string) => {
     day.get(covererId)?.pccCoversIds.push(targetId);

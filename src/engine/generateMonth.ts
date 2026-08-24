@@ -84,10 +84,10 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
   return { assignments, warnings };
 }
 
-const EMPTY: Map<string, MonthlyPattern> = new Map();
+export const EMPTY: Map<string, MonthlyPattern> = new Map();
 
 /** Group patterns by calendar month → (staffId → pattern). */
-function indexPatternsByMonth(
+export function indexPatternsByMonth(
   patterns: MonthlyPattern[],
 ): Map<string, Map<string, MonthlyPattern>> {
   const byMonth = new Map<string, Map<string, MonthlyPattern>>();
@@ -109,7 +109,7 @@ function indexPatternsByMonth(
  * Friday of the week containing its last Monday. Kept in sync with
  * `monthWeekRange` in src/lib/dates.ts (the engine stays import-free of /lib).
  */
-function monthWeekInterval(month: Date): { start: Date; end: Date } {
+export function monthWeekInterval(month: Date): { start: Date; end: Date } {
   let start = startOfMonth(month);
   while (getDay(start) !== 1) start = addDays(start, 1);
   let lastMonday = endOfMonth(month);
