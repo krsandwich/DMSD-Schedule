@@ -1,4 +1,6 @@
-import type { Assignment, MonthlyPattern, Staff, Warning } from './types';
+import { parseISO } from 'date-fns';
+import { isLastWeekdayOfMonth } from './inventory';
+import type { Assignment, Location, MonthlyPattern, Staff, Warning } from './types';
 
 /**
  * Step 9 — Warnings.
@@ -131,6 +133,40 @@ export function computeWarnings(
         refKey: target.id,
         message: `${name(target.id)} has no PCC coverage.`,
       });
+    }
+  }
+
+  // Inventory Day (last weekday of the month): each location with eligible
+  // MA / PCC-tier staff working should have someone flagged for inventory.
+  if (isLastWeekdayOfMonth(parseISO(isoDate))) {
+    const atLocation = (role: Staff['role'], location: Location) =>
+      staff.filter((s) => s.role === role && byStaff.get(s.id)?.location === location);
+    const locationLabel: Record<Location, string> = { kona: 'Kona', waimea: 'Waimea', remote: 'Remote', off: 'Off' };
+
+    for (const location of ['kona', 'waimea'] as Location[]) {
+      const eligibleMas = atLocation('ma', location);
+      if (eligibleMas.length > 0 && !eligibleMas.some((s) => byStaff.get(s.id)?.isInventory)) {
+        warnings.push({
+          date: isoDate,
+          type: 'inventory_ma_missing',
+          refKey: location,
+          message: `No inventory MA assigned at ${locationLabel[location]}.`,
+        });
+      }
+
+      const eligiblePccTier = [
+        ...atLocation('aesthetic_concierge', location),
+        ...atLocation('pcc', location),
+        ...atLocation('manager', location),
+      ];
+      if (eligiblePccTier.length > 0 && !eligiblePccTier.some((s) => byStaff.get(s.id)?.isInventory)) {
+        warnings.push({
+          date: isoDate,
+          type: 'inventory_pcc_missing',
+          refKey: location,
+          message: `No inventory PCC assigned at ${locationLabel[location]}.`,
+        });
+      }
     }
   }
 

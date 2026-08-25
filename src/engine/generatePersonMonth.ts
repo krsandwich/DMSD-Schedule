@@ -1,10 +1,11 @@
-import { eachDayOfInterval, format, getDate, getDay, differenceInCalendarDays, startOfMonth } from 'date-fns';
+import { eachDayOfInterval, format, getDate, getDay, differenceInCalendarDays, parseISO, startOfMonth } from 'date-fns';
 import { resolveAttendance } from './attendance';
 import { assignMod } from './mod';
 import { assignCoverage } from './coverage';
 import { assignMAs } from './assignMAs';
 import { assignPCCs } from './assignPCCs';
 import { assignShipping } from './shipping';
+import { assignInventory, isLastWeekdayOfMonth } from './inventory';
 import { EMPTY, indexPatternsByMonth, monthWeekInterval } from './generateMonth';
 import type { Assignment, GeneratePersonMonthInput } from './types';
 
@@ -74,6 +75,9 @@ export function generatePersonMonth(input: GeneratePersonMonthInput): Assignment
     // Step 5 — Assign PCCs / Aesthetic Concierge (already-covered targets and
     // already-loaded PCCs are correctly respected — see assignPCCs.ts).
     assignPCCs(day, staff, patternsByStaff);
+    // Step 5.5 — Inventory Day (last weekday of the month only; already-decided
+    // locations — locked or from this same call — are left alone).
+    if (isLastWeekdayOfMonth(parseISO(isoDate))) assignInventory(day, staff);
     // Step 6 — Shipping (not an exclusive resource; safe to recompute).
     assignShipping(day, staff, patternsByStaff);
 

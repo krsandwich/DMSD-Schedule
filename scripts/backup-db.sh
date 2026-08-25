@@ -28,7 +28,7 @@ LOG="$BACKUP_DIR/backup.log"
 
 # Publicly-readable tables (see CLAUDE.md §5 RLS: SELECT is public on all of
 # these). Schema for each lives in supabase/migrations/, not here.
-TABLES=(staff monthly_patterns daily_assignments monthly_holidays dismissed_warnings published_months hidden_months schedule_snapshots)
+TABLES=(staff monthly_patterns daily_assignments monthly_holidays dismissed_warnings published_months hidden_months schedule_snapshots monthly_reminders)
 
 mkdir -p "$DEST"
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }

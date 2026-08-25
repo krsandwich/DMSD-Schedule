@@ -6,6 +6,7 @@ import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
 import { useMonthHolidays, useSaveHolidays } from '@/hooks/useMonthHolidays';
+import { useMonthReminders, useSaveReminders } from '@/hooks/useMonthReminders';
 import { useAssignments, useReplaceDayAssignments, useReplacePersonMonth } from '@/hooks/useAssignments';
 import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { format, parseISO } from 'date-fns';
@@ -139,6 +140,8 @@ export function MonthlySetupPage() {
   const savePattern = useSavePattern(month);
   const holidaysQuery = useMonthHolidays(month);
   const saveHolidays = useSaveHolidays(month);
+  const remindersQuery = useMonthReminders(month);
+  const saveReminders = useSaveReminders(month);
   const replacePerson = useReplacePersonMonth(month);
   const replaceDay = useReplaceDayAssignments(month);
   const hiddenQuery = useHiddenMonths();
@@ -169,10 +172,16 @@ export function MonthlySetupPage() {
     () => staff.filter((s) => s.receivesMas).sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [staff],
   );
+  // MA dropdown options, for interns' "Shadows" field.
+  const maStaffList = useMemo(
+    () => staff.filter((s) => s.role === 'ma').sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [staff],
+  );
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [holidayText, setHolidayText] = useState('');
+  const [remindersText, setRemindersText] = useState('');
   const [status, setStatus] = useState('');
   // Which staff row is mid-generation (disables just that row's button).
   const [genId, setGenId] = useState<string | null>(null);
@@ -184,7 +193,8 @@ export function MonthlySetupPage() {
   const draftsRef = useRef<Record<string, Draft>>({});
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   // Keys with a pending debounce timer or an in-flight save (staff id, or
-  // '__holidays__'); drives the "Saving… / All changes saved" indicator.
+  // '__holidays__' / '__reminders__'); drives the "Saving… / All changes
+  // saved" indicator.
   const pending = useRef<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [everSaved, setEverSaved] = useState(false);
@@ -203,6 +213,15 @@ export function MonthlySetupPage() {
     if (!holidaysQuery.data) return;
     setHolidayText(formatDayRanges(holidaysQuery.data));
   }, [holidaysQuery.data]);
+
+  // Load the month's Special Reminders into the editable field. Stored/loaded
+  // as raw text (no parse/format round-trip needed), so this is a direct
+  // mirror — checked against `undefined` specifically, since '' (genuinely no
+  // reminders) is falsy and would otherwise be skipped.
+  useEffect(() => {
+    if (remindersQuery.data === undefined) return;
+    setRemindersText(remindersQuery.data);
+  }, [remindersQuery.data]);
 
   // Hydrate drafts from saved patterns (or seeded defaults) ONCE per month. After
   // that, the on-screen drafts own the state: because autosave invalidates the
@@ -310,6 +329,23 @@ export function MonthlySetupPage() {
       setStatus('Holiday autosave failed: ' + errorMessage(e));
     } finally {
       pending.current.delete('__holidays__');
+      refreshBusy();
+    }
+  };
+
+  // Special Reminders autosave on blur. Purely informational — unlike
+  // holidays, nothing about the schedule itself changes — so this is just a
+  // plain save, no per-date clear/generate side effects.
+  const saveRemindersNow = async () => {
+    pending.current.add('__reminders__');
+    refreshBusy();
+    try {
+      await saveReminders.mutateAsync(remindersText);
+      setEverSaved(true);
+    } catch (e) {
+      setStatus('Reminders autosave failed: ' + errorMessage(e));
+    } finally {
+      pending.current.delete('__reminders__');
       refreshBusy();
     }
   };
@@ -606,6 +642,7 @@ export function MonthlySetupPage() {
                         staff={s}
                         draft={d}
                         providers={providers}
+                        mas={maStaffList}
                         onProviderChoice={(v) => setDefaultChoice(s.id, v)}
                         onWantsTwoMas={(v) => setField(s.id, { wantsTwoMas: v })}
                         onCoverage={(v) => setField(s.id, { coverage: v })}
@@ -640,6 +677,28 @@ export function MonthlySetupPage() {
             })}
           </tbody>
         </table>
+
+        <div className="mt-6 flex items-start gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
+          <span className="text-lg leading-none">📌</span>
+          <div className="flex-1">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-orange-800">
+              Special Reminders — {format(month, 'MMM yyyy')}
+            </label>
+            <p className="mt-1 text-xs text-orange-700">
+              One per line, formatted <code className="rounded bg-orange-100 px-1">day: text</code> — e.g.{' '}
+              <code className="rounded bg-orange-100 px-1">20: Monthly staff meeting</code>. Shows as a callout on
+              that date on the calendar. Doesn't carry forward to next month.
+            </p>
+            <textarea
+              className="mt-2 w-full max-w-md rounded border border-orange-300 px-2 py-1.5 text-sm"
+              rows={3}
+              value={remindersText}
+              placeholder={'20: Monthly staff meeting\n5: Vendor visit'}
+              onChange={(e) => setRemindersText(e.target.value)}
+              onBlur={saveRemindersNow}
+            />
+          </div>
+        </div>
       </main>
     </div>
   );
@@ -650,6 +709,7 @@ function DefaultsCell({
   staff,
   draft,
   providers,
+  mas,
   onProviderChoice,
   onWantsTwoMas,
   onCoverage,
@@ -660,6 +720,8 @@ function DefaultsCell({
   staff: Staff;
   draft: Draft;
   providers: Staff[];
+  /** MA options for an intern's "Shadows" field. */
+  mas: Staff[];
   onProviderChoice: (value: string) => void;
   onWantsTwoMas: (value: boolean) => void;
   onCoverage: (value: boolean) => void;
@@ -667,6 +729,27 @@ function DefaultsCell({
   onModRank: (value: string) => void;
   onShippingRank: (value: string) => void;
 }) {
+  // Interns get no defaults/ranks — just which MA they shadow this month.
+  if (staff.role === 'intern') {
+    return (
+      <label className="flex items-center gap-1 text-xs">
+        <span className="text-gray-500">Shadows</span>
+        <select
+          className="rounded border border-gray-300 px-1 py-1"
+          value={draft.defaultTargetId ?? ''}
+          onChange={(e) => onProviderChoice(e.target.value)}
+        >
+          <option value="">—</option>
+          {mas.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   const isMa = staff.role === 'ma';
   const isSupport = isSupportRole(staff.role);
   const isProvider = staff.receivesMas;

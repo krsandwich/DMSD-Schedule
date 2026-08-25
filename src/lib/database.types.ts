@@ -45,6 +45,8 @@ export type DailyAssignmentRow = {
   provider_coverage_ids: string[];
   is_shipping: boolean;
   is_social_media: boolean;
+  is_inventory: boolean;
+  is_missed_shift: boolean;
   custom_text: string | null;
   weekly_task_no: number | null;
 }
@@ -66,6 +68,11 @@ export type ScheduleSnapshotRow = {
   month: string;
   taken_at: string;
   rows: Assignment[];
+}
+
+export type MonthlyReminderRow = {
+  month: string;
+  text: string;
 }
 
 export type DismissedWarningRow = {
@@ -97,6 +104,7 @@ export interface Database {
       published_months: Table<PublishedMonthRow, PublishedMonthRow>;
       hidden_months: Table<HiddenMonthRow, HiddenMonthRow>;
       schedule_snapshots: Table<ScheduleSnapshotRow, ScheduleSnapshotRow>;
+      monthly_reminders: Table<MonthlyReminderRow, MonthlyReminderRow>;
       daily_assignments: Table<DailyAssignmentRow, Omit<DailyAssignmentRow, 'id'>>;
       dismissed_warnings: Table<DismissedWarningRow, DismissedWarningRow>;
       app_users: Table<AppUserRow>;

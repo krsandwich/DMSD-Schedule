@@ -68,6 +68,8 @@ export function resolveAttendance(
       providerCoverageIds: [],
       isShipping: false,
       isSocialMedia: false,
+      isInventory: false,
+      isMissedShift: false,
       customText: null,
       weeklyTaskNo: null,
     };

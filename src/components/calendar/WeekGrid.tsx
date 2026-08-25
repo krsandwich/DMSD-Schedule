@@ -11,6 +11,8 @@ interface Props {
   staffById: Map<string, Staff>;
   editable: boolean;
   warningsByDate: Map<string, Warning[]>;
+  /** Special Reminders text(s) for a date, from Monthly Setup. */
+  remindersByDate: Map<string, string[]>;
   /** Weekly task numbers (#1–6) for this week, keyed by MA staff id. */
   taskByStaff: Map<string, number>;
   onTileClick: (assignment: Assignment, staff: Staff) => void;
@@ -37,6 +39,9 @@ interface CellCtx {
 // Providers render as one fixed row each (see WeekGrid) — not a generic RoleRow.
 const ROWS: RoleRow[] = [
   personRow('mas', 'Medical Assistants', (d) => d.standaloneMas),
+  // Hidden automatically when nobody's an intern that week — see the `has`
+  // check on personRow below (empty rows are filtered out of ROWS entirely).
+  personRow('interns', 'Interns', (d) => d.interns),
   covererRow('pccs', 'PCC', (d) => d.pccs),
   personRow('estheticians', 'Esthetician', (d) => d.estheticians),
   personRow('wellness', 'Wellness', (d) => d.wellness),
@@ -55,6 +60,7 @@ export function WeekGrid({
   staffById,
   editable,
   warningsByDate,
+  remindersByDate,
   taskByStaff,
   onTileClick,
   onDismissWarning,
@@ -75,6 +81,7 @@ export function WeekGrid({
           key={d.date}
           day={d}
           warnings={warningsByDate.get(d.date) ?? []}
+          reminders={remindersByDate.get(d.date) ?? []}
           editable={editable}
           onDismissWarning={onDismissWarning}
         />
@@ -135,11 +142,13 @@ export function WeekGrid({
 function DayHeader({
   day,
   warnings,
+  reminders,
   editable,
   onDismissWarning,
 }: {
   day: DayModel;
   warnings: Warning[];
+  reminders: string[];
   editable: boolean;
   onDismissWarning: (w: Warning) => void;
 }) {
@@ -162,6 +171,18 @@ function DayHeader({
           )
         )}
       </div>
+      {reminders.length > 0 && (
+        <div className="space-y-1">
+          {reminders.map((r, i) => (
+            <div
+              key={i}
+              className="rounded bg-orange-100 px-1.5 py-1 text-[11px] font-medium text-orange-800"
+            >
+              📌 {r}
+            </div>
+          ))}
+        </div>
+      )}
       {!day.holiday && warnings.length > 0 && (
         <ul className="space-y-1 rounded bg-amber-50 p-1.5 text-[11px] text-amber-800">
           {warnings.map((w) => (
@@ -281,6 +302,7 @@ function personRow(
           taskNo={ctx.taskByStaff.get(p.staff.id)}
           requestedOff={opts.requestedOff}
           covers={p.covers}
+          shadows={p.shadows}
           onClick={() => ctx.onTileClick(p.assignment, p.staff)}
         />
       )),

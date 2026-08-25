@@ -9,7 +9,8 @@ export type Role =
   | 'wellness'
   | 'remote'
   | 'manager'
-  | 'aesthetic_concierge';
+  | 'aesthetic_concierge'
+  | 'intern';
 
 export type Location = 'kona' | 'waimea' | 'remote' | 'off';
 
@@ -63,8 +64,11 @@ export interface MonthlyPattern {
   additionalDaysLocation: WeekdayLocation | null;
   /**
    * Preferred assignment, by role:
-   *  - MA  → their default provider (a `receivesMas` staff id).
-   *  - PCC → their default coverage target (a `needsPcc` staff id).
+   *  - MA     → their default provider (a `receivesMas` staff id).
+   *  - PCC    → their default coverage target (a `needsPcc` staff id).
+   *  - Intern → the MA they shadow this month (a `role === 'ma'` staff id).
+   *             Purely informational (shown on the calendar) — the engine
+   *             does not auto-assign interns anywhere.
    * When the person and their target are both working at the SAME location that
    * day, the engine assigns them together before any balancing. null = no default.
    */
@@ -97,6 +101,16 @@ export interface Assignment {
   providerCoverageIds: string[];
   isShipping: boolean;
   isSocialMedia: boolean;
+  /**
+   * Inventory Day duty. Auto-assigned to one MA and one PCC-tier person per
+   * location on the last weekday of the month (see inventory.ts); also
+   * manually toggleable any day in the tile editor.
+   */
+  isInventory: boolean;
+  /** MA-only manual flag: they were scheduled but didn't show up. Renders the
+   * tile light red instead of their usual location color. Purely manual —
+   * never set by generation. */
+  isMissedShift: boolean;
   customText: string | null;
   /**
    * Weekly task # (#1–6) override. null = use the automatic per-week rotation
@@ -113,7 +127,9 @@ export type WarningType =
   | 'out_provider_no_coverage'
   | 'ma_location_mismatch'
   | 'target_no_pcc'
-  | 'pcc_location_mismatch';
+  | 'pcc_location_mismatch'
+  | 'inventory_ma_missing'
+  | 'inventory_pcc_missing';
 
 export interface Warning {
   /** ISO yyyy-MM-dd. */

@@ -22,6 +22,8 @@ export interface PersonView {
   assignment: Assignment;
   /** Targets this person is covering as a stand-in PCC (managers / estheticians). */
   covers?: Staff[];
+  /** The MA this intern is shadowing this month (set in Monthly Setup). */
+  shadows?: Staff;
 }
 
 export interface DayModel {
@@ -31,6 +33,7 @@ export interface DayModel {
   providers: ProviderView[];
   /** Standalone MAs not nested under a provider (e.g. the MOD, or unassigned). */
   standaloneMas: PersonView[];
+  interns: PersonView[];
   managers: PersonView[];
   pccs: CovererView[];
   concierge: CovererView[];
@@ -55,6 +58,8 @@ function offAssignment(date: string, staffId: string): Assignment {
     providerCoverageIds: [],
     isShipping: false,
     isSocialMedia: false,
+    isInventory: false,
+    isMissedShift: false,
     customText: null,
     weeklyTaskNo: null,
   };
@@ -66,6 +71,7 @@ function emptyModel(date: string): DayModel {
     holiday: false,
     providers: [],
     standaloneMas: [],
+    interns: [],
     managers: [],
     pccs: [],
     concierge: [],
@@ -167,6 +173,13 @@ export function buildDayModel(
     }
 
     switch (person.role) {
+      case 'intern':
+        model.interns.push({
+          staff: person,
+          assignment,
+          shadows: shadowedMa(person.id, patternsByStaff, staffById),
+        });
+        break;
       case 'manager':
         model.managers.push({ staff: person, assignment, covers: covsOf(assignment, staffById) });
         break;
@@ -203,4 +216,14 @@ function covsOf(assignment: Assignment, staffById: Map<string, Staff>): Staff[] 
   return assignment.pccCoversIds
     .map((id) => staffById.get(id))
     .filter((s): s is Staff => !!s);
+}
+
+/** The MA an intern shadows this month, from their pattern's `defaultTargetId`. */
+function shadowedMa(
+  internId: string,
+  patternsByStaff: Map<string, MonthlyPattern>,
+  staffById: Map<string, Staff>,
+): Staff | undefined {
+  const targetId = patternsByStaff.get(internId)?.defaultTargetId;
+  return targetId ? staffById.get(targetId) : undefined;
 }

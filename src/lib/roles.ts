@@ -4,6 +4,7 @@ import type { Role } from '@/engine/types';
 export const ROLE_LABEL: Record<Role, string> = {
   provider: 'Providers',
   ma: 'Medical Assistants',
+  intern: 'Interns',
   manager: 'Manager',
   pcc: 'PCC',
   aesthetic_concierge: 'Aesthetic Concierge',
@@ -16,6 +17,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const ROLE_ORDER: Role[] = [
   'provider',
   'ma',
+  'intern',
   'pcc',
   'esthetician',
   'wellness',

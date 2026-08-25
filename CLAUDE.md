@@ -102,6 +102,8 @@ PA Tricia, PA Natalie, Dr. Monica, RN Steph, PA Kendra, Dr. Shama.
 
 **Aesthetic Concierge (2):** Raella, Maile. Can also act as **PCC** (to fill PCC gaps) and handle **Shipping**.
 
+**Interns (0+):** none by default — added as needed via Roster. No defaults/ranks (not MOD/shipping/coverage-eligible, don't receive or provide MAs/PCC). Their only Monthly Setup field is **Shadows**: which MA they're paired with that month, reusing `monthly_patterns.default_target_id` (a `role === 'ma'` staff id) — purely informational, shown on the calendar as a badge on their tile; the engine never auto-assigns it. Standard attendance (weekday/location/time-off) still applies. Their calendar row is omitted entirely on weeks with no interns.
+
 **MOD eligibility & priority:** Keahi (default) → Sara → Reina.
 
 ---
@@ -262,6 +264,14 @@ Resolve present/off for each staff member and set each present person's location
 - Only one person is auto-assigned this way, but the Editor can add or change Shipping for anyone, any day, in the tile editor — **multiple people may have Shipping** the same day.
 - 📦 emoji shows on every person with Shipping that day.
 
+### Step 6.5 — Inventory Day
+- **Auto-assigned only on the last weekday of each calendar month** (`src/engine/inventory.ts`'s `isLastWeekdayOfMonth`; walks back over a weekend if the month's actual last day is Sat/Sun). Not tied to holidays specifically — if the last weekday is also a holiday, the day is skipped entirely like any other holiday (no staff, no inventory, no warnings).
+- Per **location** (Kona, Waimea) independently: **randomly** picks one working **MA**, and one working **PCC-tier** person — Aesthetic Concierge first, then PCC, then Manager as a last-resort fallback — and flags them `is_inventory`. A location with nobody eligible working gets nothing (no warning either, per below).
+- The day's **MOD is excluded** from being picked (either tier) — already committed to a different standalone duty.
+- **Additive, not exclusive:** unlike MOD, inventory duty doesn't remove someone from their normal MA/PCC/coverage assignment — it's a flag layered on top.
+- **Manually toggleable** any day (not just the last weekday) in the tile editor, for MA/PCC/Aesthetic Concierge/Manager roles — same as Shipping/Social Media.
+- Idempotent: if a location already has someone flagged (e.g. a real persisted pick from an earlier generate, or manually set), it's left alone rather than re-picked — same "don't disturb an already-made decision" principle as MOD in independent per-person regenerates (§8).
+
 ### Step 7 — Manual specials
 - Huaka → **Social Media** (manual toggle).
 
@@ -269,7 +279,7 @@ Resolve present/off for each staff member and set each present person's location
 - Free-text note field on every person, every day.
 
 ### Step 9 — Warnings (all dismissible; dismissals persist)
-Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the same day (`multiple_mod`); a working provider has 0 or >2 MAs (`provider_no_ma` / `provider_too_many_ma`); a coverage-flagged out provider has no coverage (`out_provider_no_coverage`); an MA's location ≠ their assigned provider's location (`ma_location_mismatch`); a coverage target has no PCC/concierge (`target_no_pcc`); a PCC/concierge's location ≠ a target they're covering (`pcc_location_mismatch`).
+Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the same day (`multiple_mod`); a working provider has 0 or >2 MAs (`provider_no_ma` / `provider_too_many_ma`); a coverage-flagged out provider has no coverage (`out_provider_no_coverage`); an MA's location ≠ their assigned provider's location (`ma_location_mismatch`); a coverage target has no PCC/concierge (`target_no_pcc`); a PCC/concierge's location ≠ a target they're covering (`pcc_location_mismatch`); on the last weekday of the month, a location with working MAs/PCC-tier staff but nobody flagged for inventory (`inventory_ma_missing` / `inventory_pcc_missing`).
 
 ---
 
@@ -278,7 +288,7 @@ Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the s
 - **Layout:** monthly view, **one week per row**, vertical scroll between weeks. Months render as whole Mon–Fri weeks (see §6), so the last row may spill into the next calendar month.
 - Day cells group staff by role; tiles colored by location; MA slots nested under their provider.
 - **Holiday** weekdays render as a greyed-out column with a "Holiday" badge and no staff.
-- Tiles surface: location color, 📦 shipping, 📣 social media, MOD badge, coverage badge, custom-text indicator, and (for MAs) a `#N` **weekly task** badge. Request-off tiles render pink (see §4).
+- Tiles surface: location color, 📦 shipping, 📣 social media, MOD badge, a brown **INV** badge (Inventory Day, §6 Step 6.5), coverage badge, custom-text indicator, and (for MAs) a `#N` **weekly task** badge. Request-off tiles render pink (see §4). An MA manually flagged **Missed Shift** (tile editor) renders light red instead of their usual location color, overriding it.
 - **Weekly MA tasks (`#1–6`):** a deterministic rotation among MAs who work at least one day that week and are not MOD-eligible, keyed by ISO week and recomputed from the roster (`src/engine/weeklyTasks.ts`), so new MAs join automatically. It's **derived, not stored** — but the Editor can override a person's number in the tile editor; the override is persisted per-assignment (`weekly_task_no`) and pinned across that whole week. **Generate month** clears overrides.
 - **Editor** can **drag an MA tile onto a provider card** to reassign it (dnd-kit) — that's the only drag-and-drop interaction. Everything else (location, MOD, coverage, PCC targets, shipping, social-media, custom note) is changed by **clicking a tile** to open the `AssignmentEditor` panel. Every drop or edit re-runs validation (§9) and refreshes warnings live. **Viewers** get the same view, read-only.
 - **Generate month** rebuilds the whole displayed month from scratch (delete + regenerate) — it first snapshots the current schedule (`schedule_snapshots`), and a **"Revert last Generate"** toolbar button restores that snapshot, undoing the generate including any manual edits it wiped. Only the most recent snapshot per month is kept.

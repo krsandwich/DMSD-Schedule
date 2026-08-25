@@ -52,6 +52,12 @@ export function AssignmentEditor({
     staff.role === 'esthetician';
   // MAs and support roles can be MOD / handle shipping.
   const canModOrShip = staff.role === 'ma' || isSupportRole(staff.role);
+  // Inventory Day eligible roles: MAs and the PCC-tier (PCC, concierge, manager).
+  const canInventory =
+    staff.role === 'ma' ||
+    staff.role === 'pcc' ||
+    staff.role === 'aesthetic_concierge' ||
+    staff.role === 'manager';
 
   const toggleId = (list: string[], id: string): string[] =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -148,11 +154,27 @@ export function AssignmentEditor({
           <Toggle label="Shipping 📦" checked={draft.isShipping} onChange={(v) => set({ isShipping: v })} />
         )}
 
+        {canInventory && (
+          <Toggle
+            label="Inventory Day (INV)"
+            checked={draft.isInventory}
+            onChange={(v) => set({ isInventory: v })}
+          />
+        )}
+
         {staff.role === 'ma' && (
           <Toggle
             label="Social Media 📣"
             checked={draft.isSocialMedia}
             onChange={(v) => set({ isSocialMedia: v })}
+          />
+        )}
+
+        {staff.role === 'ma' && (
+          <Toggle
+            label="Missed Shift"
+            checked={draft.isMissedShift}
+            onChange={(v) => set({ isMissedShift: v })}
           />
         )}
 

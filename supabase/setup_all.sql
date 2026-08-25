@@ -14,6 +14,10 @@ drop table if exists dismissed_warnings cascade;
 drop table if exists daily_assignments cascade;
 drop table if exists monthly_holidays cascade;
 drop table if exists monthly_patterns cascade;
+drop table if exists published_months cascade;
+drop table if exists hidden_months cascade;
+drop table if exists schedule_snapshots cascade;
+drop table if exists monthly_reminders cascade;
 drop table if exists app_users cascade;
 drop table if exists staff cascade;
 
@@ -25,7 +29,7 @@ drop type if exists role cascade;
 -- 1) Schema
 -- ============================================================
 create type role as enum (
-  'provider','ma','pcc','esthetician','wellness','remote','manager','aesthetic_concierge'
+  'provider','ma','pcc','esthetician','wellness','remote','manager','aesthetic_concierge','intern'
 );
 create type location as enum ('kona','waimea','remote','off');
 create type app_role as enum ('editor','viewer');
@@ -76,6 +80,8 @@ create table daily_assignments (
   provider_coverage_ids uuid[] not null default '{}',
   is_shipping           boolean not null default false,
   is_social_media       boolean not null default false,
+  is_inventory          boolean not null default false,
+  is_missed_shift       boolean not null default false,
   custom_text           text,
   weekly_task_no        int,
   unique (date, staff_id)
@@ -114,6 +120,14 @@ create table schedule_snapshots (
   month    date primary key,
   taken_at timestamptz not null default now(),
   rows     jsonb not null default '[]'
+);
+
+-- Special Reminders: free-text, one row per month, parsed client-side into
+-- day-of-month -> reminder text(s) (lines like "20: Monthly staff meeting").
+-- Month-specific; never carries forward via "Copy last month".
+create table monthly_reminders (
+  month date primary key,
+  text  text not null default ''
 );
 
 -- ============================================================
@@ -159,17 +173,18 @@ alter table dismissed_warnings enable row level security;
 alter table published_months   enable row level security;
 alter table hidden_months      enable row level security;
 alter table schedule_snapshots enable row level security;
+alter table monthly_reminders  enable row level security;
 
 create policy app_users_select_self on app_users
   for select to authenticated using (id = auth.uid());
 
 -- Schedule tables are publicly readable (read-only); writes are editor-only.
-grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings, published_months, hidden_months, schedule_snapshots to anon;
+grant select on staff, monthly_patterns, monthly_holidays, daily_assignments, dismissed_warnings, published_months, hidden_months, schedule_snapshots, monthly_reminders to anon;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings','published_months','hidden_months','schedule_snapshots']
+  foreach t in array array['staff','monthly_patterns','monthly_holidays','daily_assignments','dismissed_warnings','published_months','hidden_months','schedule_snapshots','monthly_reminders']
   loop
     execute format('create policy %1$s_select on %1$s for select to public using (true);', t);
     execute format('create policy %1$s_insert on %1$s for insert to authenticated with check (is_editor());', t);

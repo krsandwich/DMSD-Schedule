@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDayModel } from './dayModel';
-import type { Assignment, Staff } from '@/engine/types';
+import type { Assignment, MonthlyPattern, Staff } from '@/engine/types';
 
 const DATE = '2026-10-06'; // Tuesday
 
@@ -34,6 +34,8 @@ function assignment(overrides: Partial<Assignment> & { staffId: string }): Assig
     providerCoverageIds: [],
     isShipping: false,
     isSocialMedia: false,
+    isInventory: false,
+    isMissedShift: false,
     customText: null,
     weeklyTaskNo: null,
     ...overrides,
@@ -83,5 +85,63 @@ describe('buildDayModel — MA orphaned when their provider is set to Off', () =
     expect(model.providers).toHaveLength(1);
     expect(model.providers[0].mas.map((a) => a.staffId)).toEqual(['sandra']);
     expect(model.standaloneMas.map((p) => p.staff.id)).not.toContain('sandra');
+  });
+});
+
+function intern(id: string, displayName: string): Staff {
+  return { id, name: displayName, displayName, role: 'intern', canPcc: false, receivesMas: false, needsPcc: false, active: true };
+}
+
+function pattern(staffId: string, overrides: Partial<MonthlyPattern> = {}): MonthlyPattern {
+  return {
+    staffId,
+    month: '2026-10-01',
+    usualWeekdays: [1, 2, 3, 4, 5],
+    locationByWeekday: {},
+    requestedOffDays: [],
+    additionalDays: [],
+    additionalDaysLocation: null,
+    defaultTargetId: null,
+    wantsTwoMas: false,
+    coverage: false,
+    providerRank: null,
+    modRank: null,
+    shippingRank: null,
+    ...overrides,
+  };
+}
+
+describe('buildDayModel — interns', () => {
+  const taylor = intern('taylor', 'Taylor');
+  const staff = [sandra, jordyn, taylor];
+
+  it('renders an intern in the interns row with their shadowed MA resolved', () => {
+    const dayAssignments: Assignment[] = [
+      assignment({ staffId: 'sandra' }),
+      assignment({ staffId: 'jordyn' }),
+      assignment({ staffId: 'taylor' }),
+    ];
+    const patternsByStaff = new Map([['taylor', pattern('taylor', { defaultTargetId: 'sandra' })]]);
+
+    const model = buildDayModel(DATE, dayAssignments, staff, patternsByStaff);
+
+    expect(model.interns).toHaveLength(1);
+    expect(model.interns[0].staff.id).toBe('taylor');
+    expect(model.interns[0].shadows?.id).toBe('sandra');
+    // Not double-rendered anywhere else.
+    expect(model.standaloneMas.map((p) => p.staff.id)).not.toContain('taylor');
+  });
+
+  it('leaves shadows undefined when no MA is picked, without erroring', () => {
+    const dayAssignments: Assignment[] = [assignment({ staffId: 'taylor' })];
+    const model = buildDayModel(DATE, dayAssignments, [taylor], new Map());
+    expect(model.interns).toHaveLength(1);
+    expect(model.interns[0].shadows).toBeUndefined();
+  });
+
+  it('the interns row is naturally empty (not present) when nobody is an intern', () => {
+    const dayAssignments: Assignment[] = [assignment({ staffId: 'sandra' })];
+    const model = buildDayModel(DATE, dayAssignments, [sandra], new Map());
+    expect(model.interns).toEqual([]);
   });
 });

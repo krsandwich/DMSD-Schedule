@@ -46,6 +46,8 @@ export function assignmentFromRow(r: DailyAssignmentRow): Assignment {
     providerCoverageIds: r.provider_coverage_ids,
     isShipping: r.is_shipping,
     isSocialMedia: r.is_social_media,
+    isInventory: r.is_inventory,
+    isMissedShift: r.is_missed_shift,
     customText: r.custom_text,
     weeklyTaskNo: r.weekly_task_no,
   };
@@ -63,6 +65,8 @@ export function assignmentToRow(a: Assignment): Omit<DailyAssignmentRow, 'id'> {
     provider_coverage_ids: a.providerCoverageIds,
     is_shipping: a.isShipping,
     is_social_media: a.isSocialMedia,
+    is_inventory: a.isInventory,
+    is_missed_shift: a.isMissedShift,
     custom_text: a.customText,
     weekly_task_no: a.weeklyTaskNo,
   };

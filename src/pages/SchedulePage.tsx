@@ -19,6 +19,8 @@ import { useScheduleSnapshot, useSaveSnapshot } from '@/hooks/useScheduleSnapsho
 import { useClearDismissedWarnings, useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
 import { useMonthHolidays } from '@/hooks/useMonthHolidays';
+import { useMonthReminders } from '@/hooks/useMonthReminders';
+import { parseReminders } from '@/lib/reminders';
 import { usePublishedMonths, useSetMonthPublished } from '@/hooks/usePublishedMonths';
 import { useHiddenMonths, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { useRealtime } from '@/hooks/useRealtime';
@@ -57,6 +59,8 @@ export function SchedulePage() {
   const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
   const holidaysQuery = useMonthHolidays(month);
   const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
+  const remindersQuery = useMonthReminders(month);
+  const nextRemindersQuery = useMonthReminders(nextMonth(month));
   const assignmentsQuery = useAssignments(month);
   const dismissedQuery = useDismissedWarnings(month);
   const publishedQuery = usePublishedMonths();
@@ -125,6 +129,20 @@ export function SchedulePage() {
       ]),
     [month, holidaysQuery.data, nextHolidaysQuery.data],
   );
+
+  // Special Reminders (current + next month) as ISO date -> reminder text(s),
+  // for the orange callout under each date's header. Purely informational —
+  // not tied to generation, so it just reflects whatever's saved, live.
+  const remindersByDate = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [day, texts] of parseReminders(remindersQuery.data ?? '')) {
+      map.set(daysToIso(month, [day])[0], texts);
+    }
+    for (const [day, texts] of parseReminders(nextRemindersQuery.data ?? '')) {
+      map.set(daysToIso(nextMonth(month), [day])[0], texts);
+    }
+    return map;
+  }, [month, remindersQuery.data, nextRemindersQuery.data]);
 
   const warningsByDate = useMonthWarnings(assignments, staff, dismissed, patternsByStaff);
 
@@ -330,6 +348,7 @@ export function SchedulePage() {
                   staffById={staffById}
                   editable={isEditor}
                   warningsByDate={warningsByDate}
+                  remindersByDate={remindersByDate}
                   taskByStaff={taskByStaff}
                   onTileClick={(assignment, s) => isEditor && setEditing({ assignment, staff: s })}
                   onDismissWarning={(w) => dismiss.mutate(w)}

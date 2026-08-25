@@ -9,3 +9,4 @@ export { assignCoverage } from './coverage';
 export { assignMAs } from './assignMAs';
 export { assignPCCs } from './assignPCCs';
 export { assignShipping } from './shipping';
+export { assignInventory, isLastWeekdayOfMonth } from './inventory';

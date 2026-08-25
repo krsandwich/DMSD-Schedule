@@ -6,6 +6,7 @@ import {
   format,
   getDate,
   getDay,
+  parseISO,
   startOfMonth,
   subDays,
 } from 'date-fns';
@@ -15,6 +16,7 @@ import { assignCoverage } from './coverage';
 import { assignMAs } from './assignMAs';
 import { assignPCCs } from './assignPCCs';
 import { assignShipping } from './shipping';
+import { assignInventory, isLastWeekdayOfMonth } from './inventory';
 import { computeWarnings } from './warnings';
 import type {
   Assignment,
@@ -81,10 +83,10 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
 }
 
 /**
- * Run Steps 1–7 (attendance through warnings) for a single day. Shared by
- * `generateMonth`'s day loop and `generateSingleDay` (used to fill in one
- * date when a holiday is un-marked in Monthly Setup, without touching the
- * rest of the month).
+ * Run attendance through warnings for a single day (incl. Inventory Day on
+ * the last weekday of the month). Shared by `generateMonth`'s day loop and
+ * `generateSingleDay` (used to fill in one date when a holiday is un-marked
+ * in Monthly Setup, without touching the rest of the month).
  */
 export function generateDayAssignments(
   isoDate: string,
@@ -105,6 +107,8 @@ export function generateDayAssignments(
   assignMAs(day, staff, patternsByStaff);
   // Step 5 — Assign PCCs / Aesthetic Concierge.
   assignPCCs(day, staff, patternsByStaff);
+  // Step 5.5 — Inventory Day (last weekday of the month only).
+  if (isLastWeekdayOfMonth(parseISO(isoDate))) assignInventory(day, staff);
   // Step 6 — Shipping (MOD is the backup when no one is ranked).
   assignShipping(day, staff, patternsByStaff);
 
