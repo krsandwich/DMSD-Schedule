@@ -102,6 +102,11 @@ export function buildDayModel(
 
   const model = emptyModel(date);
 
+  const isWorking = (staffId: string) => {
+    const r = byStaff.get(staffId);
+    return !!r && r.location !== 'off';
+  };
+
   const dayOfMonth = getDate(parseISO(date));
   const weekday = getDay(parseISO(date)); // 0..6
 
@@ -132,8 +137,17 @@ export function buildDayModel(
 
     const assignment = row!;
 
-    // MAs assigned to a provider are nested under that provider, not shown at top level.
-    if (assignment.assignedProviderId && staffById.get(assignment.assignedProviderId)?.receivesMas) {
+    // MAs assigned to a provider are nested under that provider, not shown at
+    // top level — but only when that provider is actually working today. If
+    // the provider was set to Off/R-O after the MA link was made (e.g. via
+    // the tile editor), the provider never gets a ProviderView built to nest
+    // them under, so the MA must fall through to the standalone row instead
+    // of silently vanishing from the day.
+    if (
+      assignment.assignedProviderId &&
+      staffById.get(assignment.assignedProviderId)?.receivesMas &&
+      isWorking(assignment.assignedProviderId)
+    ) {
       continue;
     }
 

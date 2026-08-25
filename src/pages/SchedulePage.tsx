@@ -101,9 +101,9 @@ export function SchedulePage() {
   useRealtime(month);
 
   // All staff (incl. inactive) drive the VIEW so historical months keep showing
-  // people who have since been deactivated; only active staff are scheduled.
+  // people who have since been deactivated; only active staff are scheduled
+  // (handleGenerate re-derives its own fresh active-staff list — see there).
   const staff = useMemo(() => staffQuery.data ?? [], [staffQuery.data]);
-  const activeStaff = useMemo(() => staff.filter((s) => s.active), [staff]);
   const assignments = useMemo(() => assignmentsQuery.data ?? [], [assignmentsQuery.data]);
   const dismissed = dismissedQuery.data ?? new Set<string>();
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
@@ -210,11 +210,31 @@ export function SchedulePage() {
     } catch {
       // best-effort
     }
+
+    // Force a fresh read from the server for everything the engine needs,
+    // rather than trusting whatever's currently cached client-side. A Monthly
+    // Setup edit (e.g. someone's time off) can commit to the DB and still not
+    // be reflected in this page's cache yet — Generate must never silently
+    // run on stale inputs. Use these refetch results directly rather than any
+    // memoized value derived from the pre-refetch render.
+    const [freshStaff, freshPatterns, freshNextPatterns, freshHolidays, freshNextHolidays] = await Promise.all([
+      staffQuery.refetch(),
+      patternsQuery.refetch(),
+      nextPatternsQuery.refetch(),
+      holidaysQuery.refetch(),
+      nextHolidaysQuery.refetch(),
+    ]);
+    const freshActiveStaff = (freshStaff.data ?? []).filter((s) => s.active);
+    const freshHolidaySet = new Set([
+      ...daysToIso(month, freshHolidays.data ?? []),
+      ...daysToIso(nextMonth(month), freshNextHolidays.data ?? []),
+    ]);
+
     const { assignments: generated } = generateMonth({
-      staff: activeStaff,
-      patterns: [...(patternsQuery.data ?? []), ...(nextPatternsQuery.data ?? [])],
+      staff: freshActiveStaff,
+      patterns: [...(freshPatterns.data ?? []), ...(freshNextPatterns.data ?? [])],
       month,
-      holidays: holidaySet,
+      holidays: freshHolidaySet,
     });
     replaceMonth.mutate(generated);
   };
