@@ -21,6 +21,8 @@ import type {
   GenerateMonthInput,
   GenerateMonthResult,
   MonthlyPattern,
+  Staff,
+  Warning,
 } from './types';
 
 /**
@@ -62,26 +64,54 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
 
     const patternsByStaff = patternsByMonth.get(format(startOfMonth(date), 'yyyy-MM-dd')) ?? EMPTY;
 
-    // Step 1 — Attendance & locations.
-    const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekBlock);
-    // Step 2 — MOD.
-    assignMod(day, staff, patternsByStaff);
-    // Step 3 — Provider coverage (even across the month).
-    assignCoverage(day, staff, patternsByStaff, coverageCount);
-    // Step 4 — Assign MAs.
-    assignMAs(day, staff, patternsByStaff);
-    // Step 5 — Assign PCCs / Aesthetic Concierge.
-    assignPCCs(day, staff, patternsByStaff);
-    // Step 6 — Shipping (MOD is the backup when no one is ranked).
-    assignShipping(day, staff, patternsByStaff);
-
-    const dayAssignments = [...day.values()];
-    assignments.push(...dayAssignments);
-    // Step 7 — Warnings.
-    warnings.push(...computeWarnings(isoDate, dayAssignments, staff, patternsByStaff));
+    const result = generateDayAssignments(
+      isoDate,
+      dayOfMonth,
+      weekday,
+      weekBlock,
+      staff,
+      patternsByStaff,
+      coverageCount,
+    );
+    assignments.push(...result.assignments);
+    warnings.push(...result.warnings);
   }
 
   return { assignments, warnings };
+}
+
+/**
+ * Run Steps 1–7 (attendance through warnings) for a single day. Shared by
+ * `generateMonth`'s day loop and `generateSingleDay` (used to fill in one
+ * date when a holiday is un-marked in Monthly Setup, without touching the
+ * rest of the month).
+ */
+export function generateDayAssignments(
+  isoDate: string,
+  dayOfMonth: number,
+  weekday: number,
+  weekBlock: 0 | 1,
+  staff: Staff[],
+  patternsByStaff: Map<string, MonthlyPattern>,
+  coverageCount: Record<string, number>,
+): { assignments: Assignment[]; warnings: Warning[] } {
+  // Step 1 — Attendance & locations.
+  const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekBlock);
+  // Step 2 — MOD.
+  assignMod(day, staff, patternsByStaff);
+  // Step 3 — Provider coverage (even across the month).
+  assignCoverage(day, staff, patternsByStaff, coverageCount);
+  // Step 4 — Assign MAs.
+  assignMAs(day, staff, patternsByStaff);
+  // Step 5 — Assign PCCs / Aesthetic Concierge.
+  assignPCCs(day, staff, patternsByStaff);
+  // Step 6 — Shipping (MOD is the backup when no one is ranked).
+  assignShipping(day, staff, patternsByStaff);
+
+  const dayAssignments = [...day.values()];
+  // Step 7 — Warnings.
+  const warnings = computeWarnings(isoDate, dayAssignments, staff, patternsByStaff);
+  return { assignments: dayAssignments, warnings };
 }
 
 export const EMPTY: Map<string, MonthlyPattern> = new Map();

@@ -27,21 +27,41 @@ export function RosterPage() {
     [staffQuery.data],
   );
 
+  // Names are unique roster-wide (enforced by a DB constraint regardless of
+  // active status), so check for a match as the user types — case/whitespace
+  // insensitive, matching how the constraint itself compares. Catches both an
+  // active duplicate (hard block) and an inactive one (nudge toward
+  // Reactivate instead of a confusing "name must be unique" server error).
+  const trimmedName = name.trim();
+  const duplicate = useMemo(() => {
+    if (!trimmedName) return null;
+    const needle = trimmedName.toLowerCase();
+    return staff.find((s) => s.displayName.trim().toLowerCase() === needle) ?? null;
+  }, [staff, trimmedName]);
+
   if (!isEditor) return <Navigate to="/" replace />;
   if (staffQuery.isLoading) return <Spinner label="Loading roster…" />;
 
   const visible = showInactive ? staff : staff.filter((s) => s.active);
 
   const add = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmedName || duplicate) return;
     setStatus('');
     try {
-      await addStaff.mutateAsync({ name: trimmed, role });
+      await addStaff.mutateAsync({ name: trimmedName, role });
       setName('');
-      setStatus(`Added ${trimmed}.`);
+      setStatus(`Added ${trimmedName}.`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'name must be unique';
+      // Postgres unique_violation — a same-named person was added by someone
+      // else between this check and the insert (or was possible some other
+      // way we didn't anticipate).
+      const isUniqueViolation =
+        e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
+      const msg = isUniqueViolation
+        ? `"${trimmedName}" already exists on the roster.`
+        : e instanceof Error
+          ? e.message
+          : 'unknown error';
       setStatus(`Could not add: ${msg}`);
     }
   };
@@ -83,34 +103,45 @@ export function RosterPage() {
 
       <main className="flex-1 overflow-auto p-4">
         {/* Add person */}
-        <div className="mb-6 flex flex-wrap items-end gap-2">
-          <label className="flex flex-col text-xs text-gray-600">
-            Name
-            <input
-              className="mt-1 w-56 rounded border border-gray-300 px-2 py-1 text-sm"
-              value={name}
-              placeholder="e.g. PA Jordan"
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && add()}
-            />
-          </label>
-          <label className="flex flex-col text-xs text-gray-600">
-            Role
-            <select
-              className="mt-1 rounded border border-gray-300 px-2 py-1 text-sm"
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              {ROLE_ORDER.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABEL[r]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button onClick={add} disabled={addStaff.isPending || !name.trim()}>
-            + Add person
-          </Button>
+        <div className="mb-6">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col text-xs text-gray-600">
+              Name
+              <input
+                className={`mt-1 w-56 rounded border px-2 py-1 text-sm ${
+                  duplicate ? 'border-red-400' : 'border-gray-300'
+                }`}
+                value={name}
+                placeholder="e.g. PA Jordan"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && add()}
+              />
+            </label>
+            <label className="flex flex-col text-xs text-gray-600">
+              Role
+              <select
+                className="mt-1 rounded border border-gray-300 px-2 py-1 text-sm"
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+              >
+                {ROLE_ORDER.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button onClick={add} disabled={addStaff.isPending || !trimmedName || !!duplicate}>
+              + Add person
+            </Button>
+          </div>
+          {duplicate && (
+            <p className="mt-1.5 max-w-md text-xs text-red-600">
+              {duplicate.active
+                ? `"${duplicate.displayName}" is already on the roster — names must be unique.`
+                : `"${duplicate.displayName}" already exists but is deactivated. Check "Show inactive" below and click Reactivate instead of adding a duplicate.`}
+            </p>
+          )}
         </div>
 
         {/* Roster list grouped by role */}

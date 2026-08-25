@@ -27,6 +27,24 @@ export function useDismissedWarnings(month: Date) {
   });
 }
 
+/**
+ * Clear every dismissed-warning record for the month. Used by "Generate
+ * month": a fresh regenerate can surface different (or the same) problems,
+ * so a dismissal against the OLD schedule shouldn't silently hide a warning
+ * on the new one.
+ */
+export function useClearDismissedWarnings(month: Date) {
+  const { start, end } = monthRange(month);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('dismissed_warnings').delete().gte('date', start).lte('date', end);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dismissed', monthKey(month)] }),
+  });
+}
+
 export function useDismissWarning(month: Date) {
   const qc = useQueryClient();
   return useMutation({

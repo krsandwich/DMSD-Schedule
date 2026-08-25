@@ -85,6 +85,28 @@ export function useReplacePersonMonth(month: Date) {
   });
 }
 
+/**
+ * Replace ONE date's assignments across ALL staff, leaving every other day in
+ * the month untouched. Used when a Monthly Setup holiday edit takes effect: a
+ * newly-added holiday clears that day (pass `assignments: []`); a
+ * newly-removed holiday fills it back in (pass the freshly generated day).
+ */
+export function useReplaceDayAssignments(month: Date) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ date, assignments }: { date: string; assignments: Assignment[] }) => {
+      const del = await supabase.from('daily_assignments').delete().eq('date', date);
+      if (del.error) throw del.error;
+      const rows = assignments.filter((a) => a.location !== 'off').map(assignmentToRow);
+      if (rows.length) {
+        const ins = await supabase.from('daily_assignments').insert(rows);
+        if (ins.error) throw ins.error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: assignmentsKey(month) }),
+  });
+}
+
 /** Upsert a single assignment (used after a drag-drop or toggle edit). */
 export function useUpsertAssignment(month: Date) {
   const qc = useQueryClient();

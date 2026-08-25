@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   PointerSensor,
@@ -15,7 +16,7 @@ import { useAllStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns } from '@/hooks/useMonthlyPatterns';
 import { useAssignments, useReplaceMonth, useUpsertAssignment } from '@/hooks/useAssignments';
 import { useScheduleSnapshot, useSaveSnapshot } from '@/hooks/useScheduleSnapshot';
-import { useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
+import { useClearDismissedWarnings, useDismissedWarnings, useDismissWarning } from '@/hooks/useDismissedWarnings';
 import { useMonthWarnings } from '@/hooks/useMonthWarnings';
 import { useMonthHolidays } from '@/hooks/useMonthHolidays';
 import { usePublishedMonths, useSetMonthPublished } from '@/hooks/usePublishedMonths';
@@ -42,7 +43,13 @@ import { AssignmentEditor } from '@/components/calendar/AssignmentEditor';
 export function SchedulePage() {
   const { session, isEditor, signOut } = useSession();
   const [showSignIn, setShowSignIn] = useState(false);
-  const [month, setMonth] = useState(() => new Date());
+  // Monthly Setup's "‹ Calendar" link carries the month it was viewing, so
+  // flipping between the two pages stays on the same month. Present only when
+  // arriving from that link — a plain visit falls back to the usual
+  // earliest-non-hidden/published-month default below.
+  const [searchParams] = useSearchParams();
+  const monthParam = searchParams.get('month');
+  const [month, setMonth] = useState(() => (monthParam ? parseIso(monthParam) : new Date()));
 
   const staffQuery = useAllStaff();
   const patternsQuery = useMonthlyPatterns(month);
@@ -60,13 +67,15 @@ export function SchedulePage() {
   const snapshotQuery = useScheduleSnapshot(month);
   const upsert = useUpsertAssignment(month);
   const dismiss = useDismissWarning(month);
+  const clearDismissed = useClearDismissedWarnings(month);
   const setPublished = useSetMonthPublished();
 
   const isPublished = (publishedQuery.data ?? new Set<string>()).has(monthKey(month));
 
   // Viewers: on first load, if the current month isn't published, jump to the most
   // recent published month (if any) so they don't land on an empty screen.
-  const didInitViewer = useRef(false);
+  // Skipped when a month came in via the URL (see monthParam above).
+  const didInitViewer = useRef(!!monthParam);
   useEffect(() => {
     if (isEditor || didInitViewer.current || !publishedQuery.data) return;
     didInitViewer.current = true;
@@ -78,8 +87,9 @@ export function SchedulePage() {
   }, [isEditor, publishedQuery.data]);
 
   // Editors: on first load, open the earliest non-hidden month from now forward
-  // (skips months the editor has hidden in Monthly Setup).
-  const didInitEditor = useRef(false);
+  // (skips months the editor has hidden in Monthly Setup). Skipped when a
+  // month came in via the URL (see monthParam above).
+  const didInitEditor = useRef(!!monthParam);
   useEffect(() => {
     if (!isEditor || didInitEditor.current || !hiddenQuery.data) return;
     didInitEditor.current = true;
@@ -190,6 +200,15 @@ export function SchedulePage() {
     } catch {
       window.alert('Could not save a backup before generating — aborted. Please try again.');
       return;
+    }
+    // A fresh regenerate can surface different problems than the old schedule
+    // had — don't let a stale dismissal hide a warning on the new one. Not
+    // safety-critical (unlike the snapshot above), so a failure here doesn't
+    // block the generate.
+    try {
+      await clearDismissed.mutateAsync();
+    } catch {
+      // best-effort
     }
     const { assignments: generated } = generateMonth({
       staff: activeStaff,

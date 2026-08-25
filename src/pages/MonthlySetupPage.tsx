@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import type { MonthlyPattern, Staff, WeekdayLocation } from '@/engine/types';
-import { generatePersonMonth } from '@/engine';
+import { generatePersonMonth, generateSingleDay } from '@/engine';
 import { useSession } from '@/hooks/useSession';
 import { useStaff } from '@/hooks/useStaff';
 import { useMonthlyPatterns, useSavePattern } from '@/hooks/useMonthlyPatterns';
 import { useMonthHolidays, useSaveHolidays } from '@/hooks/useMonthHolidays';
-import { useAssignments, useReplacePersonMonth } from '@/hooks/useAssignments';
+import { useAssignments, useReplaceDayAssignments, useReplacePersonMonth } from '@/hooks/useAssignments';
 import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { daysToIso, monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
 import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
 import { SELECTABLE_WEEKDAY_LOCATIONS, WEEKDAY_LOCATION_LABEL } from '@/lib/locations';
@@ -117,7 +117,13 @@ function draftFromPattern(p: MonthlyPattern, s: Staff, idByName: Map<string, str
 
 export function MonthlySetupPage() {
   const { isEditor } = useSession();
-  const [month, setMonth] = useState(() => new Date());
+  // The calendar's "Monthly setup" link carries the month it was viewing, so
+  // flipping between the two pages stays on the same month. Present only when
+  // arriving from that link — a plain visit falls back to the usual
+  // earliest-non-hidden-month default below.
+  const [searchParams] = useSearchParams();
+  const monthParam = searchParams.get('month');
+  const [month, setMonth] = useState(() => (monthParam ? parseISO(monthParam) : new Date()));
 
   const staffQuery = useStaff();
   const patternsQuery = useMonthlyPatterns(month);
@@ -134,13 +140,15 @@ export function MonthlySetupPage() {
   const holidaysQuery = useMonthHolidays(month);
   const saveHolidays = useSaveHolidays(month);
   const replacePerson = useReplacePersonMonth(month);
+  const replaceDay = useReplaceDayAssignments(month);
   const hiddenQuery = useHiddenMonths();
   const setHidden = useSetMonthHidden();
 
   const isHidden = (hiddenQuery.data ?? new Set<string>()).has(monthKey(month));
 
   // On first load, open the earliest non-hidden month from now forward.
-  const didInit = useRef(false);
+  // Skipped when a month came in via the URL (see monthParam above).
+  const didInit = useRef(!!monthParam);
   useEffect(() => {
     if (didInit.current || !hiddenQuery.data) return;
     didInit.current = true;
@@ -262,12 +270,42 @@ export function MonthlySetupPage() {
   const setOffText = (staffId: string, offText: string) => setField(staffId, { offText });
 
   // Holidays autosave on blur (a single field, so no per-keystroke debounce).
+  // A day newly added to the list is cleared (holidays get no staff); a day
+  // newly removed is filled back in — both scoped to just that date, so the
+  // rest of the month's schedule (incl. manual edits) is untouched.
   const saveHolidaysNow = async () => {
     pending.current.add('__holidays__');
     refreshBusy();
     try {
-      await saveHolidays.mutateAsync(parseDayRanges(holidayText));
+      const newDays = parseDayRanges(holidayText);
+      const oldDays = holidaysQuery.data ?? [];
+      const oldSet = new Set(oldDays);
+      const newSet = new Set(newDays);
+      const added = newDays.filter((d) => !oldSet.has(d));
+      const removed = oldDays.filter((d) => !newSet.has(d));
+
+      for (const d of added) {
+        const iso = daysToIso(month, [d])[0];
+        await replaceDay.mutateAsync({ date: iso, assignments: [] });
+      }
+      for (const d of removed) {
+        const iso = daysToIso(month, [d])[0];
+        const generated = generateSingleDay(parseISO(iso), staff, patternsQuery.data ?? []);
+        await replaceDay.mutateAsync({ date: iso, assignments: generated });
+      }
+
+      await saveHolidays.mutateAsync(newDays);
       setEverSaved(true);
+      if (added.length || removed.length) {
+        setStatus(
+          [
+            added.length && `cleared ${added.length} day${added.length === 1 ? '' : 's'}`,
+            removed.length && `generated ${removed.length} day${removed.length === 1 ? '' : 's'}`,
+          ]
+            .filter(Boolean)
+            .join(', ') + '.',
+        );
+      }
     } catch (e) {
       setStatus('Holiday autosave failed: ' + errorMessage(e));
     } finally {
@@ -419,7 +457,7 @@ export function MonthlySetupPage() {
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2">
-        <Link to="/">
+        <Link to={`/?month=${monthKey(month)}`}>
           <Button variant="ghost">‹ Calendar</Button>
         </Link>
         <h1 className="text-sm font-semibold">Monthly setup</h1>
