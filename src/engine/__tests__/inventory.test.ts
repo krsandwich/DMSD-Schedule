@@ -33,7 +33,7 @@ function buildDay(overrides: Record<string, Partial<MonthlyPattern>> = {}): { da
   let patterns = allWorking(staff); // everyone at kona by default
   for (const [id, changes] of Object.entries(overrides)) patterns = patch(patterns, id, changes);
   const patternsByStaff = new Map(patterns.map((p) => [p.staffId, p]));
-  const day = resolveAttendance(INV_DAY, 30, 2, staff, patternsByStaff);
+  const day = resolveAttendance(INV_DAY, 2, staff, patternsByStaff);
   assignMod(day, staff, patternsByStaff);
   return { day, staff };
 }

@@ -22,8 +22,8 @@ export type MonthlyPatternRow = {
   month: string;
   usual_weekdays: number[];
   location_by_weekday: Record<string, WeekdayLocation>;
-  requested_off_days: number[];
-  additional_days: number[];
+  requested_off_dates: string[];
+  additional_days_dates: string[];
   additional_days_location: WeekdayLocation | null;
   default_target_id: string | null;
   wants_two_mas: boolean;
@@ -53,7 +53,7 @@ export type DailyAssignmentRow = {
 
 export type MonthlyHolidayRow = {
   month: string;
-  days: number[];
+  dates: string[];
 }
 
 export type PublishedMonthRow = {

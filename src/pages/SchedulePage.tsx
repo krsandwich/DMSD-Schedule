@@ -24,16 +24,7 @@ import { parseReminders } from '@/lib/reminders';
 import { usePublishedMonths, useSetMonthPublished } from '@/hooks/usePublishedMonths';
 import { useHiddenMonths, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { useRealtime } from '@/hooks/useRealtime';
-import {
-  daysToIso,
-  isoOf,
-  monthKey,
-  monthLabel,
-  nextMonth,
-  parseIso,
-  sameCalendarMonth,
-  weekdayRows,
-} from '@/lib/dates';
+import { isoOf, monthKey, monthLabel, parseIso, parseMonthParam, weekdayRows } from '@/lib/dates';
 import { roleRank } from '@/lib/roles';
 import { buildDayModel } from '@/lib/dayModel';
 import { Spinner } from '@/components/common/Spinner';
@@ -48,19 +39,37 @@ export function SchedulePage() {
   // Monthly Setup's "‹ Calendar" link carries the month it was viewing, so
   // flipping between the two pages stays on the same month. Present only when
   // arriving from that link — a plain visit falls back to the usual
-  // earliest-non-hidden/published-month default below.
-  const [searchParams] = useSearchParams();
-  const monthParam = searchParams.get('month');
-  const [month, setMonth] = useState(() => (monthParam ? parseIso(monthParam) : new Date()));
+  // earliest-non-hidden/published-month default below. `monthParam` is
+  // validated (not just parsed) so a malformed/out-of-range URL (e.g.
+  // "banana" or "2026-13-01") never crashes the page — it's treated the same
+  // as no param at all.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const monthParam = parseMonthParam(searchParams.get('month'));
+  const [month, setMonthState] = useState(() => monthParam ?? new Date());
+
+  // The URL is kept in sync with `month` so refresh/bookmark/back-forward all
+  // land on the right month, instead of silently reverting to whatever the
+  // URL said on first load.
+  const setMonth = (d: Date, opts?: { replace?: boolean }) => {
+    setMonthState(d);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('month', monthKey(d));
+      return next;
+    }, opts);
+  };
+
+  // Follow EXTERNAL changes to the URL (browser back/forward, a hand-edited
+  // or bookmarked link) — the initializer above only runs once on mount.
+  useEffect(() => {
+    if (monthParam && monthKey(monthParam) !== monthKey(month)) setMonthState(monthParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const staffQuery = useAllStaff();
   const patternsQuery = useMonthlyPatterns(month);
-  // Trailing days of the view spill into next month; pull its patterns + holidays too.
-  const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
   const holidaysQuery = useMonthHolidays(month);
-  const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
   const remindersQuery = useMonthReminders(month);
-  const nextRemindersQuery = useMonthReminders(nextMonth(month));
   const assignmentsQuery = useAssignments(month);
   const dismissedQuery = useDismissedWarnings(month);
   const publishedQuery = usePublishedMonths();
@@ -85,7 +94,7 @@ export function SchedulePage() {
     didInitViewer.current = true;
     if (!publishedQuery.data.has(monthKey(month))) {
       const latest = [...publishedQuery.data].sort().at(-1);
-      if (latest) setMonth(parseIso(latest));
+      if (latest) setMonth(parseIso(latest), { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditor, publishedQuery.data]);
@@ -98,7 +107,7 @@ export function SchedulePage() {
     if (!isEditor || didInitEditor.current || !hiddenQuery.data) return;
     didInitEditor.current = true;
     const target = upcomingNonHiddenMonth(new Date(), hiddenQuery.data);
-    if (monthKey(target) !== monthKey(month)) setMonth(target);
+    if (monthKey(target) !== monthKey(month)) setMonth(target, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditor, hiddenQuery.data]);
 
@@ -115,36 +124,20 @@ export function SchedulePage() {
     () => new Map((patternsQuery.data ?? []).map((p) => [p.staffId, p])),
     [patternsQuery.data],
   );
-  const nextPatternsByStaff = useMemo(
-    () => new Map((nextPatternsQuery.data ?? []).map((p) => [p.staffId, p])),
-    [nextPatternsQuery.data],
+
+  // Holiday dates as an ISO set, for greying days out. This month's own row
+  // also governs its trailing spillover dates (see CLAUDE.md §6/§8).
+  const holidaySet = useMemo(() => new Set(holidaysQuery.data ?? []), [holidaysQuery.data]);
+
+  // Special Reminders as ISO date -> reminder text(s), for the orange callout
+  // under each date's header. Purely informational — not tied to generation,
+  // so it just reflects whatever's saved, live.
+  const remindersByDate = useMemo(
+    () => parseReminders(remindersQuery.data ?? '', month),
+    [month, remindersQuery.data],
   );
 
-  // Holiday dates (current + next month) as an ISO set, for greying days out.
-  const holidaySet = useMemo(
-    () =>
-      new Set([
-        ...daysToIso(month, holidaysQuery.data ?? []),
-        ...daysToIso(nextMonth(month), nextHolidaysQuery.data ?? []),
-      ]),
-    [month, holidaysQuery.data, nextHolidaysQuery.data],
-  );
-
-  // Special Reminders (current + next month) as ISO date -> reminder text(s),
-  // for the orange callout under each date's header. Purely informational —
-  // not tied to generation, so it just reflects whatever's saved, live.
-  const remindersByDate = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const [day, texts] of parseReminders(remindersQuery.data ?? '')) {
-      map.set(daysToIso(month, [day])[0], texts);
-    }
-    for (const [day, texts] of parseReminders(nextRemindersQuery.data ?? '')) {
-      map.set(daysToIso(nextMonth(month), [day])[0], texts);
-    }
-    return map;
-  }, [month, remindersQuery.data, nextRemindersQuery.data]);
-
-  const warningsByDate = useMonthWarnings(assignments, staff, dismissed, patternsByStaff);
+  const warningsByDate = useMonthWarnings(assignments, staff, dismissed, patternsByStaff, month);
 
   // Providers flagged for coverage this month (both need and can provide it).
   const coverageStaffIds = useMemo(
@@ -166,9 +159,7 @@ export function SchedulePage() {
   // least one day that week (R/O the whole week → skipped). Deterministic by ISO
   // week, recomputed from the current roster so new MAs join automatically.
   const weeklyTasksFor = (week: Date[]): Map<string, number> => {
-    const modEligible = (id: string) =>
-      (patternsByStaff.get(id)?.modRank ?? null) !== null ||
-      (nextPatternsByStaff.get(id)?.modRank ?? null) !== null;
+    const modEligible = (id: string) => (patternsByStaff.get(id)?.modRank ?? null) !== null;
     const worksThisWeek = (id: string) =>
       week.some((d) => (assignmentsByDate.get(isoOf(d)) ?? []).some((a) => a.staffId === id));
     const eligible = staff
@@ -235,24 +226,18 @@ export function SchedulePage() {
     // be reflected in this page's cache yet — Generate must never silently
     // run on stale inputs. Use these refetch results directly rather than any
     // memoized value derived from the pre-refetch render.
-    const [freshStaff, freshPatterns, freshNextPatterns, freshHolidays, freshNextHolidays] = await Promise.all([
+    const [freshStaff, freshPatterns, freshHolidays] = await Promise.all([
       staffQuery.refetch(),
       patternsQuery.refetch(),
-      nextPatternsQuery.refetch(),
       holidaysQuery.refetch(),
-      nextHolidaysQuery.refetch(),
     ]);
     const freshActiveStaff = (freshStaff.data ?? []).filter((s) => s.active);
-    const freshHolidaySet = new Set([
-      ...daysToIso(month, freshHolidays.data ?? []),
-      ...daysToIso(nextMonth(month), freshNextHolidays.data ?? []),
-    ]);
 
     const { assignments: generated } = generateMonth({
       staff: freshActiveStaff,
-      patterns: [...(freshPatterns.data ?? []), ...(freshNextPatterns.data ?? [])],
+      patterns: freshPatterns.data ?? [],
       month,
-      holidays: freshHolidaySet,
+      holidays: new Set(freshHolidays.data ?? []),
     });
     replaceMonth.mutate(generated);
   };
@@ -336,9 +321,7 @@ export function SchedulePage() {
           {rows.map((week, i) => {
             const dayModels = week.map((day) => {
               const iso = isoOf(day);
-              // Trailing days belong to next month — resolve off/R-O against its patterns.
-              const patterns = sameCalendarMonth(day, month) ? patternsByStaff : nextPatternsByStaff;
-              return buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patterns, holidaySet.has(iso));
+              return buildDayModel(iso, assignmentsByDate.get(iso) ?? [], staff, patternsByStaff, holidaySet.has(iso));
             });
             const taskByStaff = weeklyTasksFor(week);
             return (

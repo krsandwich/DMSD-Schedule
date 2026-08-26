@@ -12,7 +12,7 @@ const staff = buildRoster();
 
 function fullDay(patterns: MonthlyPattern[]): { assignments: Assignment[]; index: Map<string, MonthlyPattern> } {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
-  const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+  const day = resolveAttendance('2026-06-01', 1, staff, index);
   assignMod(day, staff, index);
   assignMAs(day, staff, index);
   assignPCCs(day, staff, index);
@@ -131,5 +131,46 @@ describe('Step 9 — warnings', () => {
     expect(flagged(asPcc, 'shania')).toBe(false);
     // Mia, who isn't standing in, is still flagged.
     expect(flagged(asPcc, 'mia')).toBe(true);
+  });
+
+  describe('pattern_out_of_sync (stale schedule vs. current setup)', () => {
+    it('warns when current setup says off but the persisted schedule still shows working', () => {
+      const { assignments, index } = fullDay(allWorking(staff));
+      // Setup just changed: Tricia is now requested off today, but the
+      // persisted assignments (still generated from before that edit) show
+      // her working.
+      const patched = new Map(index);
+      patched.set('tricia', { ...index.get('tricia')!, requestedOffDates: ['2026-06-01'] });
+      const expectedDay = resolveAttendance('2026-06-01', 1, staff, patched);
+      const types = computeWarnings('2026-06-01', assignments, staff, patched, expectedDay).map((w) => w.type);
+      expect(types).toContain('pattern_out_of_sync');
+    });
+
+    it('warns when current setup says working but the persisted schedule still shows off', () => {
+      const patterns = makeOff(allWorking(staff), 'tricia');
+      const { assignments, index } = fullDay(patterns);
+      // Setup just changed: Tricia's requested-off was removed, so she should
+      // work today, but the persisted (pre-edit) assignments still show off.
+      const patched = new Map(index);
+      patched.set('tricia', { ...index.get('tricia')!, usualWeekdays: [1, 2, 3, 4, 5] });
+      const expectedDay = resolveAttendance('2026-06-01', 1, staff, patched);
+      const types = computeWarnings('2026-06-01', assignments, staff, patched, expectedDay).map((w) => w.type);
+      expect(types).toContain('pattern_out_of_sync');
+    });
+
+    it('does not warn when the persisted schedule already matches current setup', () => {
+      const { assignments, index } = fullDay(allWorking(staff));
+      const expectedDay = resolveAttendance('2026-06-01', 1, staff, index);
+      const types = computeWarnings('2026-06-01', assignments, staff, index, expectedDay).map((w) => w.type);
+      expect(types).not.toContain('pattern_out_of_sync');
+    });
+
+    it('is not computed at all when expectedDay is omitted (e.g. during generation)', () => {
+      const { assignments, index } = fullDay(allWorking(staff));
+      const patched = new Map(index);
+      patched.set('tricia', { ...index.get('tricia')!, requestedOffDates: ['2026-06-01'] });
+      const types = computeWarnings('2026-06-01', assignments, staff, patched).map((w) => w.type);
+      expect(types).not.toContain('pattern_out_of_sync');
+    });
   });
 });

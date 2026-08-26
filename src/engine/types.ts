@@ -47,19 +47,26 @@ export interface MonthlyPattern {
   usualWeekdays: number[];
   /** e.g. { "1": "kona", "2": "waimea", "3": "alternating" }. */
   locationByWeekday: Record<string, WeekdayLocation>;
-  /** Days of month (1-based), expanded from ranges like "1-3, 8-11". */
-  requestedOffDays: number[];
   /**
-   * Additional working days (1-based days of month) — the inverse of
-   * {@link requestedOffDays}. On these days the person works at
-   * {@link additionalDaysLocation}, overriding their usual weekday pattern and any
-   * requested-off. Empty = none.
+   * ISO dates (yyyy-MM-dd), expanded from ranges like "1-3, 8-11" (bare
+   * numbers default to this pattern's own month) or "12/1-12/5" (explicit
+   * month/day — used to reach a trailing spillover date that's still part of
+   * this row's own displayed week range). Real calendar dates, not day-of-month
+   * offsets, so this same row also governs its month's spillover days —
+   * there's no separate next-month row to maintain.
    */
-  additionalDays: number[];
+  requestedOffDates: string[];
   /**
-   * Location for {@link additionalDays}. null or `'off'` means the additional days
-   * have no effect. `'alternating'` / `'waimea_kona'` resolve by two-week block
-   * like a weekday.
+   * Additional working days (ISO dates, same "1-3" / "12/1-12/5" parsing as
+   * {@link requestedOffDates}) — the inverse of requestedOffDates. On these
+   * days the person works at {@link additionalDaysLocation}, overriding their
+   * usual weekday pattern and any requested-off. Empty = none.
+   */
+  additionalDaysDates: string[];
+  /**
+   * Location for {@link additionalDaysDates}. null or `'off'` means the additional
+   * days have no effect. `'alternating'` / `'waimea_kona'` resolve by two-week
+   * block like a weekday.
    */
   additionalDaysLocation: WeekdayLocation | null;
   /**
@@ -129,7 +136,8 @@ export type WarningType =
   | 'target_no_pcc'
   | 'pcc_location_mismatch'
   | 'inventory_ma_missing'
-  | 'inventory_pcc_missing';
+  | 'inventory_pcc_missing'
+  | 'pattern_out_of_sync';
 
 export interface Warning {
   /** ISO yyyy-MM-dd. */
@@ -143,10 +151,12 @@ export interface Warning {
 export interface GenerateMonthInput {
   staff: Staff[];
   /**
-   * Patterns for every calendar month the rendered weeks touch. A month is shown
-   * as whole Mon–Fri weeks, so the trailing days spill into the next calendar
-   * month; include that month's patterns too. Each date resolves against the
-   * pattern whose `month` matches the date's calendar month.
+   * This month's own patterns (one row per staff member for `month`). A month
+   * is shown as whole Mon–Fri weeks, so the view's trailing days spill into
+   * the next calendar month — those days are governed by this SAME set of
+   * patterns too (via real ISO dates in `requestedOffDates` /
+   * `additionalDaysDates` that can point past this row's own month), not a
+   * separate next-month row.
    */
   patterns: MonthlyPattern[];
   /** Any date within the target month. */

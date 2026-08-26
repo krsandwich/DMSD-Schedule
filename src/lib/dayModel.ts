@@ -1,4 +1,4 @@
-import { getDate, getDay, parseISO } from 'date-fns';
+import { getDay, parseISO } from 'date-fns';
 import type { Assignment, MonthlyPattern, Staff } from '@/engine/types';
 
 export interface ProviderView {
@@ -113,7 +113,6 @@ export function buildDayModel(
     return !!r && r.location !== 'off';
   };
 
-  const dayOfMonth = getDate(parseISO(date));
   const weekday = getDay(parseISO(date)); // 0..6
 
   // Constant display order (by name); role grouping comes from the calendar rows,
@@ -130,7 +129,7 @@ export function buildDayModel(
     if (!present) {
       // Off vs Requested-off (R/O).
       const pattern = patternsByStaff.get(person.id);
-      const isRequestedOff = !!pattern && pattern.requestedOffDays.includes(dayOfMonth);
+      const isRequestedOff = !!pattern && pattern.requestedOffDates.includes(date);
       const scheduledThisWeekday = !!pattern && pattern.usualWeekdays.includes(weekday);
       const assignment = row ?? offAssignment(date, person.id);
       if (isRequestedOff && scheduledThisWeekday) {

@@ -1,6 +1,6 @@
 import { parseISO } from 'date-fns';
 import { isLastWeekdayOfMonth } from './inventory';
-import type { Assignment, Location, MonthlyPattern, Staff, Warning } from './types';
+import type { Assignment, DayMap, Location, MonthlyPattern, Staff, Warning } from './types';
 
 /**
  * Step 9 — Warnings.
@@ -8,12 +8,20 @@ import type { Assignment, Location, MonthlyPattern, Staff, Warning } from './typ
  * Computed purely from a single day's assignments plus the roster, so the same
  * function validates both generated days and hand-edited ones (drag-and-drop).
  * All warnings are dismissible; dismissals are persisted elsewhere by `refKey`.
+ *
+ * `expectedDay`, when supplied, is a fresh `resolveAttendance` result for this
+ * same date computed from the CURRENT patterns — used to detect a persisted
+ * schedule that's gone stale relative to a pattern edit (e.g. someone's
+ * requested-off days changed after the month was already generated). Omit it
+ * for freshly-generated days, where `dayAssignments` IS that fresh result and
+ * the comparison would never fire.
  */
 export function computeWarnings(
   isoDate: string,
   dayAssignments: Assignment[],
   staff: Staff[],
   patternsByStaff: Map<string, MonthlyPattern> = new Map(),
+  expectedDay?: DayMap,
 ): Warning[] {
   const warnings: Warning[] = [];
   const staffById = new Map(staff.map((s) => [s.id, s]));
@@ -167,6 +175,28 @@ export function computeWarnings(
           message: `No inventory PCC assigned at ${locationLabel[location]}.`,
         });
       }
+    }
+  }
+
+  // Stale schedule: current setup implies a different off/working status than
+  // what's actually persisted for this day (a pattern edit — requested-off,
+  // additional days, usual weekdays — landed after this day was generated).
+  // Only compares working-vs-off, not location, so an intentional manual
+  // location change (e.g. a coverage swap) never trips this.
+  if (expectedDay) {
+    for (const id of patternsByStaff.keys()) {
+      if (!staffById.get(id)?.active) continue;
+      const expectedWorking = (expectedDay.get(id)?.location ?? 'off') !== 'off';
+      const actualWorking = working(id);
+      if (expectedWorking === actualWorking) continue;
+      warnings.push({
+        date: isoDate,
+        type: 'pattern_out_of_sync',
+        refKey: id,
+        message: expectedWorking
+          ? `${name(id)} should be working today per current setup, but the schedule still shows them off — regenerate to apply.`
+          : `${name(id)} is marked off/requested-off in current setup, but the schedule still shows them working — regenerate to apply.`,
+      });
     }
   }
 

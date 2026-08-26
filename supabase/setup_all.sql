@@ -56,9 +56,9 @@ create table monthly_patterns (
   month               date not null,
   usual_weekdays      int[] not null default '{}',
   location_by_weekday jsonb not null default '{}',
-  requested_off_days  int[] not null default '{}',
-  additional_days          int[] not null default '{}',             -- force-work days (inverse of requested off)
-  additional_days_location text,                                    -- location for additional_days ('kona'|'waimea'|'remote'|'alternating'|'waimea_kona')
+  requested_off_dates       date[] not null default '{}',           -- ISO dates; can reach spillover dates via M/D input
+  additional_days_dates     date[] not null default '{}',           -- force-work dates (inverse of requested off)
+  additional_days_location text,                                    -- location for additional_days_dates ('kona'|'waimea'|'remote'|'alternating'|'waimea_kona')
   default_target_id   uuid references staff(id) on delete set null, -- MA->provider, PCC->target
   wants_two_mas       boolean not null default false,               -- provider filled to 2 MAs first
   coverage            boolean not null default false,               -- provider needs + provides coverage
@@ -98,7 +98,7 @@ create table dismissed_warnings (
 
 create table monthly_holidays (
   month date primary key,
-  days  int[] not null default '{}'
+  dates date[] not null default '{}'
 );
 
 -- Published months (row present = published). Viewer UI only shows published

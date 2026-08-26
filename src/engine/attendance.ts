@@ -13,8 +13,8 @@ const ALTERNATING: Partial<Record<WeekdayLocation, readonly [Location, Location]
 /**
  * Step 1 — Attendance & locations.
  *
- * A person works a given weekday if it is one of their `usualWeekdays` and the
- * day-of-month is not in `requestedOffDays`. Working people take their location
+ * A person works a given weekday if it is one of their `usualWeekdays` and
+ * `isoDate` is not in `requestedOffDates`. Working people take their location
  * from `locationByWeekday`; everyone else renders `off`.
  *
  * A weekday set to `'alternating'` / `'waimea_kona'` resolves by the two-week
@@ -25,7 +25,6 @@ const ALTERNATING: Partial<Record<WeekdayLocation, readonly [Location, Location]
  */
 export function resolveAttendance(
   isoDate: string,
-  dayOfMonth: number,
   weekday: number,
   staff: Staff[],
   patternsByStaff: Map<string, MonthlyPattern>,
@@ -44,7 +43,7 @@ export function resolveAttendance(
         ALTERNATING[choice]?.[weekBlock] ?? (choice as Location);
 
       const worksWeekday = pattern.usualWeekdays.includes(weekday);
-      const isOff = pattern.requestedOffDays.includes(dayOfMonth);
+      const isOff = pattern.requestedOffDates.includes(isoDate);
       if (worksWeekday && !isOff) {
         location = resolve(pattern.locationByWeekday[String(weekday)] ?? 'off');
       }
@@ -52,7 +51,7 @@ export function resolveAttendance(
       // Additional working days override the usual pattern AND requested-off:
       // the person works this day at additionalDaysLocation.
       const addLoc = pattern.additionalDaysLocation;
-      if (pattern.additionalDays.includes(dayOfMonth) && addLoc && addLoc !== 'off') {
+      if (pattern.additionalDaysDates.includes(isoDate) && addLoc && addLoc !== 'off') {
         location = resolve(addLoc);
       }
     }

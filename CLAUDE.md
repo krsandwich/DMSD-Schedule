@@ -79,7 +79,7 @@ An internal scheduling app for a dermatology practice with three locations. **On
 | `off` (not scheduled to work) | Light grey |
 | Request Off (R/O) — scheduled that weekday but requested off | Pink |
 
-*(R/O is not a distinct `location` value; it's a display distinction. A person lands in the pink **Request Off (R/O)** row only when the day is one of their usual weekdays **and** in their `requested_off_days`; otherwise a non-working day is plain grey **Off**.)*
+*(R/O is not a distinct `location` value; it's a display distinction. A person lands in the pink **Request Off (R/O)** row only when the day is one of their usual weekdays **and** in their `requested_off_dates`; otherwise a non-working day is plain grey **Off**.)*
 
 ### People
 **Providers (6)** — receive MAs:
@@ -147,8 +147,8 @@ create table monthly_patterns (
   month               date not null,            -- first day of month
   usual_weekdays      int[] not null default '{}', -- 1=Mon .. 5=Fri
   location_by_weekday jsonb not null default '{}', -- {"1":"kona","2":"waimea"}
-  requested_off_days  int[] not null default '{}', -- days of month, expanded from "1-3, 8-11"
-  additional_days     int[] not null default '{}', -- force-work days, inverse of requested_off_days
+  requested_off_dates       date[] not null default '{}', -- ISO dates, expanded from "1-3, 8-11" / "12/1-12/5"
+  additional_days_dates     date[] not null default '{}', -- force-work dates, inverse of requested_off_dates
   additional_days_location text,                   -- 'kona'|'waimea'|'remote'|'alternating'|'waimea_kona'|null; null/'off' = no effect
   unique (staff_id, month)
 );
@@ -179,10 +179,11 @@ create table dismissed_warnings (
   primary key (date, type, ref_key)
 );
 
--- per-month office holidays (set by the Editor); day-of-month integers
+-- per-month office holidays (set by the Editor); real ISO dates, so this row
+-- also governs its own trailing spillover dates (see §6, §8)
 create table monthly_holidays (
   month date primary key,           -- first day of month
-  days  int[] not null default '{}' -- e.g. {1,4,5}; holiday weekdays = office closed
+  dates date[] not null default '{}' -- e.g. {2026-09-01,2026-09-04}; holiday weekdays = office closed
 );
 
 -- a row present = that month is published (visible to Viewers); UI-only gate,
@@ -216,16 +217,16 @@ create table schedule_snapshots (
 
 ## 6. Generation algorithm
 
-Run per weekday (Mon–Fri). A person **works** that day if it's one of their `usual_weekdays` and the day-of-month is not in `requested_off_days`. Everyone working gets their location from `location_by_weekday`; non-working people render `off` (grey). Steps run in order — later steps depend on earlier ones.
+Run per weekday (Mon–Fri). A person **works** that day if it's one of their `usual_weekdays` and that ISO date is not in `requested_off_dates`. Everyone working gets their location from `location_by_weekday`; non-working people render `off` (grey). Steps run in order — later steps depend on earlier ones.
 
-**Month = whole weeks.** A month is generated and displayed as complete Mon–Fri weeks: a week belongs to the month containing its **Monday**, so a month spans from its first Monday through the Friday of the week containing its last Monday (e.g. June 2026 = Jun 1 → Jul 3, July 2026 = Jul 6 → Jul 31; adjacent months never overlap or leave a gap). Trailing spillover days resolve against the **next** calendar month's patterns, so generation pulls both months' patterns.
+**Month = whole weeks.** A month is generated and displayed as complete Mon–Fri weeks: a week belongs to the month containing its **Monday**, so a month spans from its first Monday through the Friday of the week containing its last Monday (e.g. June 2026 = Jun 1 → Jul 3, July 2026 = Jul 6 → Jul 31; adjacent months never overlap or leave a gap). **Trailing spillover days are governed by this SAME month's own `monthly_patterns` / `monthly_holidays` rows** — `requested_off_dates`, `additional_days_dates`, and holiday `dates` are real ISO dates (not day-of-month offsets), so a row can reach past its own calendar month via explicit `M/D` input (e.g. entering `10/1-10/3` while on September's setup page). Generation never needs a second, next-month row to make spillover days work.
 
-**Holidays.** Days listed in `monthly_holidays` are skipped entirely — no staff are scheduled, no warnings are raised, and the calendar greys the day out.
+**Holidays.** Dates listed in `monthly_holidays.dates` are skipped entirely — no staff are scheduled, no warnings are raised, and the calendar greys the day out.
 
 ### Step 1 — Attendance & locations
 Resolve present/off for each staff member and set each present person's location. (Holiday weekdays are skipped before this step.)
-- **Additional days (force-work):** the inverse of requested-off. A day-of-month in `additional_days` makes the person work at `additional_days_location`, **overriding** both their usual weekday pattern and any requested-off for that day. `null` / `off` location = no effect.
-- **Alternating locations:** a weekday set to `alternating` (Kona / Waimea) or `waimea_kona` (Waimea / Kona) switches every **two weeks within the month view** — weeks 1–2 = the first location, weeks 3–4 = the second, then the two-week block repeats (so a 5th week returns to the first). The block index resets at each month's first Monday. *(Changed from the earlier continuous weekly ISO-parity rotation per client request.)*
+- **Additional days (force-work):** the inverse of requested-off. A date in `additional_days_dates` makes the person work at `additional_days_location`, **overriding** both their usual weekday pattern and any requested-off for that day. `null` / `off` location = no effect.
+- **Alternating locations:** a weekday set to `alternating` (Kona / Waimea) or `waimea_kona` (Waimea / Kona) switches every **two weeks within the month view** — weeks 1–2 = the first location, weeks 3–4 = the second, then the two-week block repeats (so a 5th week returns to the first), continuing that same count through trailing spillover days rather than resetting. The block index resets at each month's first Monday. *(Changed from the earlier continuous weekly ISO-parity rotation per client request.)*
 
 ### Step 2 — MOD (exactly one per day)
 - MOD is **data-driven**, not hard-coded: any staff member can be made MOD-eligible via a per-month **MOD rank** in Monthly Setup (`monthly_patterns.mod_rank`; 1 = highest priority). Keahi → Sara → Reina is the seeded default ranking, not a fixed rule.
@@ -279,7 +280,7 @@ Resolve present/off for each staff member and set each present person's location
 - Free-text note field on every person, every day.
 
 ### Step 9 — Warnings (all dismissible; dismissals persist)
-Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the same day (`multiple_mod`); a working provider has 0 or >2 MAs (`provider_no_ma` / `provider_too_many_ma`); a coverage-flagged out provider has no coverage (`out_provider_no_coverage`); an MA's location ≠ their assigned provider's location (`ma_location_mismatch`); a coverage target has no PCC/concierge (`target_no_pcc`); a PCC/concierge's location ≠ a target they're covering (`pcc_location_mismatch`); on the last weekday of the month, a location with working MAs/PCC-tier staff but nobody flagged for inventory (`inventory_ma_missing` / `inventory_pcc_missing`).
+Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the same day (`multiple_mod`); a working provider has 0 or >2 MAs (`provider_no_ma` / `provider_too_many_ma`); a coverage-flagged out provider has no coverage (`out_provider_no_coverage`); an MA's location ≠ their assigned provider's location (`ma_location_mismatch`); a coverage target has no PCC/concierge (`target_no_pcc`); a PCC/concierge's location ≠ a target they're covering (`pcc_location_mismatch`); on the last weekday of the month, a location with working MAs/PCC-tier staff but nobody flagged for inventory (`inventory_ma_missing` / `inventory_pcc_missing`); a person's persisted schedule no longer matches what their CURRENT Monthly Setup pattern implies for that day — e.g. a requested-off/additional-day edit landed after the month was already generated, so the on-screen schedule is stale relative to setup (`pattern_out_of_sync`; live-only — computed by the calendar view from current patterns, not during generation itself, and only compares working-vs-off, never location, so an intentional manual location change never trips it).
 
 ---
 
@@ -299,11 +300,12 @@ Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the s
 
 ## 8. Monthly setup UI
 
-- A **Holidays** callout at the top: day-of-month ranges like `1, 4-5` (same parser), saved per month to `monthly_holidays`.
-- Per person: pick `usual_weekdays` and a location per selected weekday (Kona / Waimea / Remote, or the two-week alternating choices **Kona / Waimea** and **Waimea / Kona**); enter requested time off as ranges like `1-3, 8-11` (parse → expanded `int[]`); enter **Additional days** (same range parser) plus an **Additional days location**; plus per-row defaults/ranks (default provider/target, "2 MAs", coverage, provider/MOD/shipping ranks).
+- A **Holidays** callout at the top: date ranges like `1, 4-5` (parser defaults bare numbers to the currently-viewed month) or explicit `M/D` for a trailing spillover date, e.g. `10/1-10/3` while on September's page — saved per month to `monthly_holidays.dates` as real ISO dates.
+- Per person: pick `usual_weekdays` and a location per selected weekday (Kona / Waimea / Remote, or the two-week alternating choices **Kona / Waimea** and **Waimea / Kona**); enter requested time off as ranges like `1-3, 8-11` or `10/1-10/3` (same bare-defaults-to-current-month / explicit-`M/D` parser → expanded `date[]`); enter **Additional days** (same parser) plus an **Additional days location**; plus per-row defaults/ranks (default provider/target, "2 MAs", coverage, provider/MOD/shipping ranks).
+- **No separate next-month setup needed for spillover days.** Because these fields store real dates rather than day-of-month offsets, a month's own setup page fully governs its trailing spillover days too — entering `10/1-10/3` on September's page is enough; there's no need to also visit October's page just to cover those three days.
 - **Autosave:** every field change persists automatically (debounced) — there's no manual save step. A header status indicator shows "Saving…" / "All changes saved ✓".
 - **Per-person "⚡ Generate" button**, one per row, far right of the table: regenerates just that one staff member into the currently-viewed month using the full engine (so cross-person placement — MA→provider, coverage, PCC — stays consistent), but only writes **their own** rows. Everyone else's existing assignments (including manual edits) are left untouched. This is the way to add a newly-hired person into an already-generated month without wiping the rest of the schedule.
-- **First month is entered manually.** Later months copy `usual_weekdays` + `location_by_weekday` + defaults/ranks from the prior month via the explicit **Copy last month** button (all editable, saved immediately). `requested_off_days` **and** `additional_days` / `additional_days_location` are month-specific and do **not** carry over.
+- **First month is entered manually.** Later months copy `usual_weekdays` + `location_by_weekday` + defaults/ranks from the prior month via the explicit **Copy last month** button (all editable, saved immediately). `requested_off_dates` **and** `additional_days_dates` / `additional_days_location` are month-specific and do **not** carry over.
 - **Hide / Unhide month** toggle (`hidden_months`): hidden months are skipped when the Editor's calendar picks a default landing month, without affecting Viewer visibility (that's the separate Publish toggle in §7).
 - **Roster page:** add staff, deactivate/reactivate, and **permanently delete** inactive staff (erases their assignments + patterns; clears references from other rows).
 
@@ -333,11 +335,13 @@ Raise when: no MOD designated (`no_mod`); more than one person flagged MOD the s
   4. "Even coverage" = coverage-assignment count per covering provider, balanced first by same-day count then by a running **monthly** count (not reset weekly — see §6 Step 3).
   5. Estheticians and wellness receive no MAs; only the 6 providers do.
   6. MA distribution: one per provider (priority order), a second only for "2 MAs"-flagged providers; surplus MAs are left unassigned (changed per client request — was "Tricia gets 2, then balance evenly").
-  7. Months span whole Mon–Fri weeks (week → month-of-its-Monday); trailing days resolve against the next month's patterns.
-  8. Holidays (`monthly_holidays`) skip a weekday entirely: no staff, no warnings, greyed out.
-  9. `alternating` / `waimea_kona` switch location in **two-week blocks within the month** (resets each month), not by continuous weekly parity.
-  10. `additional_days` force a person to work (at `additional_days_location`), overriding usual weekdays and requested-off; neither `additional_days` nor `requested_off_days` carries forward between months.
+  7. Months span whole Mon–Fri weeks (week → month-of-its-Monday); trailing spillover days are governed by that SAME month's own `monthly_patterns` / `monthly_holidays` rows (real dates, not a separate next-month row — see §6).
+  8. Holidays (`monthly_holidays.dates`) skip a weekday entirely: no staff, no warnings, greyed out.
+  9. `alternating` / `waimea_kona` switch location in **two-week blocks**, counted continuously from the view's first Monday (including through trailing spillover days), not by continuous weekly parity.
+  10. `additional_days_dates` force a person to work (at `additional_days_location`), overriding usual weekdays and requested-off; neither `additional_days_dates` nor `requested_off_dates` carries forward between months.
   11. Weekly MA task `#N` is derived per week; a per-assignment `weekly_task_no` override pins it and is wiped by re-generate.
+  12. Date-range inputs (holidays, requested-off, additional days) parse bare numbers as this row's own month and `M/D` as an explicit month (rolling to next year if that month precedes the row's own); a date that doesn't exist on the calendar (e.g. `2/30`) is silently ignored rather than rolling over.
+  13. `pattern_out_of_sync` is a live-only warning (never raised during generation itself, since a freshly-generated day always matches its own patterns by construction) — it compares a persisted assignment's working/off status against a fresh `resolveAttendance` computed from CURRENT patterns, to catch a schedule that's gone stale after a pattern edit.
 
 ---
 
@@ -360,13 +364,16 @@ user in Supabase Auth. Temporarily, any signed-in user is treated as the editor
 (`0003_all_editors.sql` / `setup_all.sql`); the original per-`app_role` gating still lives in
 `0002_rls.sql`.
 
-**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0017_schedule_snapshots.sql`);
+**Supabase:** schema/RLS live in `/supabase/migrations` (`0001_schema.sql` … `0022_date_fields.sql`);
 roster is seeded by `/supabase/seed.sql`. `setup_all.sql` is a single idempotent
 drop-and-recreate of the whole schema (handy for the dashboard SQL Editor). Apply migrations with
 the Supabase CLI (`supabase db push`) — **new columns/tables must be applied to
 the DB before their features work** (e.g. `0013` adds `daily_assignments.weekly_task_no`; `0014`
 adds `monthly_patterns.additional_days` + `additional_days_location`; `0015`/`0016` add
-`published_months` / `hidden_months`; `0017` adds `schedule_snapshots`). Regenerate `src/lib/database.types.ts` with
+`published_months` / `hidden_months`; `0017` adds `schedule_snapshots`; `0022` replaces
+`monthly_patterns.requested_off_days`/`additional_days` and `monthly_holidays.days` — day-of-month
+`int[]` — with `requested_off_dates`/`additional_days_dates`/`dates` — real `date[]`, data-migrated
+from the old columns using each row's own `month`). Regenerate `src/lib/database.types.ts` with
 `supabase gen types typescript` once the project is linked — note that table Row types must be
 `type` aliases, not `interface`s, or the typed client silently degrades to `never`.
 
@@ -378,14 +385,29 @@ a script located under `~/Desktop` (macOS TCC blocks it); keep the two in sync b
 
 **Architecture notes specific to this build:**
 - Months are computed as whole Mon–Fri weeks via `monthWeekRange`/`weekdayRows`/`monthRange`
-  (`src/lib/dates.ts`); `generateMonth` mirrors that range and indexes patterns by calendar month
-  so spillover days use the next month's setup. Holidays are passed in as a `Set<string>` of ISO
-  dates and skipped during generation; `buildDayModel` greys them in the calendar.
+  (`src/lib/dates.ts`); `generateMonth` mirrors that range with `monthWeekInterval`, but indexes
+  patterns by **staffId only** (`patternsByStaffMap`) — the SAME single month's patterns govern
+  every date in the view, including trailing spillover days, since `requested_off_dates` /
+  `additional_days_dates` are real ISO dates rather than day-of-month offsets. There is no
+  next-month pattern lookup anywhere in the engine. Holidays are passed in as a `Set<string>` of
+  ISO dates and skipped during generation; `buildDayModel` greys them in the calendar.
+- `src/lib/dateRanges.ts` (`parseDateRanges`/`formatDateRanges`) is the shared parser for all
+  date-range text inputs (holidays, requested-off, additional days): bare numbers default to a
+  supplied context month, `M/D` reaches an explicit month/year, and a date that doesn't exist on
+  the calendar (e.g. `2/30`) is dropped rather than silently rolling over (JS `Date`'s default
+  behavior). `src/lib/reminders.ts`'s `parseReminders` reuses the same per-token parsing
+  (`resolveDateToken`) for Special Reminders' `"day: text"` / `"M/D: text"` lines.
 - The engine is data-driven from per-month `monthly_patterns` rows, not hard-coded names: each row
   carries `coverage` (provider both needs + can provide coverage), `wants_two_mas`,
   `default_target_id` (MA→provider / PCC→target), `provider_rank` / `mod_rank` /
-  `shipping_rank`, and `additional_days` + `additional_days_location` (force-work override).
+  `shipping_rank`, and `additional_days_dates` + `additional_days_location` (force-work override).
   Earlier person-specific staff flags were dropped (`0008`–`0010`).
+- `pattern_out_of_sync` (`src/engine/warnings.ts`) is computed ONLY by the live calendar view
+  (`useMonthWarnings`), not during generation — it freshly resolves each date's expected attendance
+  via `resolveAttendance` from current patterns and compares working/off status against the
+  persisted assignment, surfacing a schedule that's gone stale after a Monthly Setup edit without
+  auto-regenerating anything (per user feedback, per-person edits should never silently
+  auto-regenerate — only holidays get that treatment, in `saveHolidaysNow`).
 - `daily_assignments.weekly_task_no` is a nullable per-assignment override for the derived
   weekly `#N` badge; `SchedulePage` overlays it onto the rotation in `weeklyTasksFor` so a value on
   any day of the week pins that MA's number for the whole week (calendar + Excel export).

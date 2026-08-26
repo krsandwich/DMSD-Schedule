@@ -10,8 +10,8 @@ import { useMonthReminders, useSaveReminders } from '@/hooks/useMonthReminders';
 import { useAssignments, useReplaceDayAssignments, useReplacePersonMonth } from '@/hooks/useAssignments';
 import { useHiddenMonths, useSetMonthHidden, upcomingNonHiddenMonth } from '@/hooks/useHiddenMonths';
 import { format, parseISO } from 'date-fns';
-import { daysToIso, monthKey, monthLabel, nextMonth, previousMonth } from '@/lib/dates';
-import { formatDayRanges, parseDayRanges } from '@/lib/dayRanges';
+import { monthKey, monthLabel, nextMonth, parseMonthParam, previousMonth } from '@/lib/dates';
+import { formatDateRanges, parseDateRanges } from '@/lib/dateRanges';
 import { SELECTABLE_WEEKDAY_LOCATIONS, WEEKDAY_LOCATION_LABEL } from '@/lib/locations';
 import { WEEKDAY_LABELS } from '@/lib/dates';
 import { ROLE_LABEL, isSupportRole, roleRank } from '@/lib/roles';
@@ -101,10 +101,11 @@ function defaultDraft(s: Staff, idByName: Map<string, string>): Draft {
 function draftFromPattern(p: MonthlyPattern, s: Staff, idByName: Map<string, string>): Draft {
   const byWeekday: Record<number, WeekdayChoice> = { 1: 'off', 2: 'off', 3: 'off', 4: 'off', 5: 'off' };
   for (const wd of p.usualWeekdays) byWeekday[wd] = p.locationByWeekday[String(wd)] ?? 'off';
+  const contextMonth = parseISO(p.month);
   return {
     byWeekday,
-    offText: formatDayRanges(p.requestedOffDays),
-    addlText: formatDayRanges(p.additionalDays),
+    offText: formatDateRanges(p.requestedOffDates, contextMonth),
+    addlText: formatDateRanges(p.additionalDaysDates, contextMonth),
     addlLocation: p.additionalDaysLocation ?? 'off',
     wantsTwoMas: p.wantsTwoMas,
     coverage: p.coverage,
@@ -121,18 +122,34 @@ export function MonthlySetupPage() {
   // The calendar's "Monthly setup" link carries the month it was viewing, so
   // flipping between the two pages stays on the same month. Present only when
   // arriving from that link — a plain visit falls back to the usual
-  // earliest-non-hidden-month default below.
-  const [searchParams] = useSearchParams();
-  const monthParam = searchParams.get('month');
-  const [month, setMonth] = useState(() => (monthParam ? parseISO(monthParam) : new Date()));
+  // earliest-non-hidden-month default below. `monthParam` is validated (not
+  // just parsed) so a malformed/out-of-range URL never crashes the page.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const monthParam = parseMonthParam(searchParams.get('month'));
+  const [month, setMonthState] = useState(() => monthParam ?? new Date());
+
+  // The URL is kept in sync with `month` so refresh/bookmark/back-forward all
+  // land on the right month, instead of silently reverting to whatever the
+  // URL said on first load.
+  const setMonth = (d: Date, opts?: { replace?: boolean }) => {
+    setMonthState(d);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('month', monthKey(d));
+      return next;
+    }, opts);
+  };
+
+  // Follow EXTERNAL changes to the URL (browser back/forward, a hand-edited
+  // or bookmarked link) — the initializer above only runs once on mount.
+  useEffect(() => {
+    if (monthParam && monthKey(monthParam) !== monthKey(month)) setMonthState(monthParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const staffQuery = useStaff();
   const patternsQuery = useMonthlyPatterns(month);
   const priorPatternsQuery = useMonthlyPatterns(previousMonth(month));
-  // Next month's patterns + holidays feed per-person generation: a month renders as
-  // whole Mon–Fri weeks, so its trailing days resolve against next month's setup.
-  const nextPatternsQuery = useMonthlyPatterns(nextMonth(month));
-  const nextHolidaysQuery = useMonthHolidays(nextMonth(month));
   // The month's currently-persisted assignments — per-person generate needs
   // these to place the target correctly around who's already assigned,
   // instead of re-simulating the whole day blind to existing state.
@@ -156,7 +173,7 @@ export function MonthlySetupPage() {
     if (didInit.current || !hiddenQuery.data) return;
     didInit.current = true;
     const target = upcomingNonHiddenMonth(new Date(), hiddenQuery.data);
-    if (monthKey(target) !== monthKey(month)) setMonth(target);
+    if (monthKey(target) !== monthKey(month)) setMonth(target, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenQuery.data]);
 
@@ -178,6 +195,33 @@ export function MonthlySetupPage() {
     [staff],
   );
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
+
+  const draftToPattern = (s: Staff, d: Draft): MonthlyPattern => {
+    const usualWeekdays: number[] = [];
+    const locationByWeekday: Record<string, WeekdayLocation> = {};
+    for (const wd of WEEKDAYS) {
+      const loc = d.byWeekday[wd];
+      if (loc !== 'off') {
+        usualWeekdays.push(wd);
+        locationByWeekday[String(wd)] = loc;
+      }
+    }
+    return {
+      staffId: s.id,
+      month: '',
+      usualWeekdays,
+      locationByWeekday,
+      requestedOffDates: parseDateRanges(d.offText, month),
+      additionalDaysDates: parseDateRanges(d.addlText, month),
+      additionalDaysLocation: d.addlLocation,
+      defaultTargetId: d.defaultTargetId,
+      wantsTwoMas: d.wantsTwoMas,
+      coverage: d.coverage,
+      providerRank: d.providerRank,
+      modRank: d.modRank,
+      shippingRank: d.shippingRank,
+    };
+  };
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [holidayText, setHolidayText] = useState('');
@@ -211,8 +255,8 @@ export function MonthlySetupPage() {
   // Load the month's holidays into the editable field.
   useEffect(() => {
     if (!holidaysQuery.data) return;
-    setHolidayText(formatDayRanges(holidaysQuery.data));
-  }, [holidaysQuery.data]);
+    setHolidayText(formatDateRanges(holidaysQuery.data, month));
+  }, [holidaysQuery.data, month]);
 
   // Load the month's Special Reminders into the editable field. Stored/loaded
   // as raw text (no parse/format round-trip needed), so this is a direct
@@ -236,12 +280,41 @@ export function MonthlySetupPage() {
     const byStaff = new Map(patternsQuery.data.map((p) => [p.staffId, p]));
     const idByName = new Map(staff.map((x) => [x.displayName, x.id]));
     const next: Record<string, Draft> = {};
+    const needsSeed: Staff[] = [];
     for (const s of staff) {
       const p = byStaff.get(s.id);
-      next[s.id] = p ? draftFromPattern(p, s, idByName) : defaultDraft(s, idByName);
+      if (p) {
+        next[s.id] = draftFromPattern(p, s, idByName);
+      } else {
+        next[s.id] = defaultDraft(s, idByName);
+        needsSeed.push(s);
+      }
     }
     draftsRef.current = next;
     setDrafts(next);
+
+    if (!needsSeed.length) return;
+    // A never-visited month otherwise LOOKS fully configured (seeded defaults
+    // are shown on screen) but the DB stays empty for these rows until each is
+    // hand-edited or "Copy last month" is clicked — so Generate would silently
+    // produce nothing for them. Persist the seeded defaults right away so the
+    // page and the DB never diverge.
+    pending.current.add('__seed__');
+    refreshBusy();
+    (async () => {
+      try {
+        for (const s of needsSeed) {
+          await savePattern.mutateAsync({ ...draftToPattern(s, next[s.id]), month: key });
+        }
+        setEverSaved(true);
+      } catch (e) {
+        setStatus('Could not save default setup for new staff: ' + errorMessage(e));
+      } finally {
+        pending.current.delete('__seed__');
+        refreshBusy();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staff, patternsQuery.data, month]);
 
   if (!isEditor) return <Navigate to="/" replace />;
@@ -297,7 +370,7 @@ export function MonthlySetupPage() {
     refreshBusy();
     try {
       // Force fresh reads rather than trusting whatever's cached. Two distinct
-      // staleness risks here, both silent: (1) if `oldDays` is stale/undefined
+      // staleness risks here, both silent: (1) if `oldDates` is stale/undefined
       // (e.g. a fast edit right after this page mounted), the "removed" list
       // can come back wrong — including empty, even though the new list still
       // gets saved correctly below (that save is unconditional, independent
@@ -306,30 +379,28 @@ export function MonthlySetupPage() {
       // an empty fallback silently resolves everyone "off" and writes zero
       // rows, indistinguishable from the day never having been generated.
       const [freshHolidays, freshStaff] = await Promise.all([holidaysQuery.refetch(), staffQuery.refetch()]);
-      const newDays = parseDayRanges(holidayText);
-      const oldDays = freshHolidays.data ?? [];
-      const oldSet = new Set(oldDays);
-      const newSet = new Set(newDays);
-      const added = newDays.filter((d) => !oldSet.has(d));
-      const removed = oldDays.filter((d) => !newSet.has(d));
+      const newDates = parseDateRanges(holidayText, month);
+      const oldDates = freshHolidays.data ?? [];
+      const oldSet = new Set(oldDates);
+      const newSet = new Set(newDates);
+      const added = newDates.filter((d) => !oldSet.has(d));
+      const removed = oldDates.filter((d) => !newSet.has(d));
       const freshStaffList = (freshStaff.data ?? []).sort(
         (a, b) => roleRank(a.role) - roleRank(b.role) || a.displayName.localeCompare(b.displayName),
       );
 
-      for (const d of added) {
-        const iso = daysToIso(month, [d])[0];
+      for (const iso of added) {
         await replaceDay.mutateAsync({ date: iso, assignments: [] });
       }
       if (removed.length) {
         const freshPatterns = await patternsQuery.refetch();
-        for (const d of removed) {
-          const iso = daysToIso(month, [d])[0];
-          const generated = generateSingleDay(parseISO(iso), freshStaffList, freshPatterns.data ?? []);
+        for (const iso of removed) {
+          const generated = generateSingleDay(parseISO(iso), month, freshStaffList, freshPatterns.data ?? []);
           await replaceDay.mutateAsync({ date: iso, assignments: generated });
         }
       }
 
-      await saveHolidays.mutateAsync(newDays);
+      await saveHolidays.mutateAsync(newDates);
       setEverSaved(true);
       if (added.length || removed.length) {
         setStatus(
@@ -426,33 +497,6 @@ export function MonthlySetupPage() {
     }
   };
 
-  const draftToPattern = (s: Staff, d: Draft): MonthlyPattern => {
-    const usualWeekdays: number[] = [];
-    const locationByWeekday: Record<string, WeekdayLocation> = {};
-    for (const wd of WEEKDAYS) {
-      const loc = d.byWeekday[wd];
-      if (loc !== 'off') {
-        usualWeekdays.push(wd);
-        locationByWeekday[String(wd)] = loc;
-      }
-    }
-    return {
-      staffId: s.id,
-      month: '',
-      usualWeekdays,
-      locationByWeekday,
-      requestedOffDays: parseDayRanges(d.offText),
-      additionalDays: parseDayRanges(d.addlText),
-      additionalDaysLocation: d.addlLocation,
-      defaultTargetId: d.defaultTargetId,
-      wantsTwoMas: d.wantsTwoMas,
-      coverage: d.coverage,
-      providerRank: d.providerRank,
-      modRank: d.modRank,
-      shippingRank: d.shippingRank,
-    };
-  };
-
   // Generate ONE person into the existing schedule without clearing anyone else's.
   // Saves this row's pattern, then places the target around who's ALREADY really
   // assigned that month (generatePersonMonth) — not a from-scratch simulation
@@ -472,15 +516,13 @@ export function MonthlySetupPage() {
       // Persist this row's setup so the schedule and setup stay in sync.
       await savePattern.mutateAsync(targetPattern);
 
-      // Cross-person context: every other person's saved pattern for this month +
-      // next month's patterns (for the trailing spill-over days), with this person's
-      // just-edited draft swapped in. Mirrors SchedulePage's handleGenerate inputs.
+      // Cross-person context: every other person's saved pattern for this
+      // month, with this person's just-edited draft swapped in. This same set
+      // also governs the view's trailing spillover days. Mirrors
+      // SchedulePage's handleGenerate inputs.
       const others = (patternsQuery.data ?? []).filter((p) => p.staffId !== s.id);
-      const patterns = [...others, targetPattern, ...(nextPatternsQuery.data ?? [])];
-      const holidays = new Set([
-        ...daysToIso(month, parseDayRanges(holidayText)),
-        ...daysToIso(nextMonth(month), nextHolidaysQuery.data ?? []),
-      ]);
+      const patterns = [...others, targetPattern];
+      const holidays = new Set(parseDateRanges(holidayText, month));
 
       const mine = generatePersonMonth({
         staffId: s.id,
@@ -563,10 +605,15 @@ export function MonthlySetupPage() {
             <label className="block text-xs font-semibold uppercase tracking-wide text-amber-800">
               Holidays — {format(month, 'MMM yyyy')}
             </label>
+            <p className="mt-1 text-xs text-amber-700">
+              Bare numbers mean this month (<code className="rounded bg-amber-100 px-1">1, 4-5</code>); use{' '}
+              <code className="rounded bg-amber-100 px-1">M/D</code> for a trailing spillover date, e.g.{' '}
+              <code className="rounded bg-amber-100 px-1">10/1-10/3</code>.
+            </p>
             <input
-              className="mt-2 w-48 rounded border border-amber-300 px-2 py-1 text-sm"
+              className="mt-2 w-56 rounded border border-amber-300 px-2 py-1 text-sm"
               value={holidayText}
-              placeholder="1, 4-5"
+              placeholder="1, 4-5, 10/1-10/3"
               onChange={(e) => setHolidayText(e.target.value)}
               onBlur={saveHolidaysNow}
             />
@@ -582,8 +629,12 @@ export function MonthlySetupPage() {
                   {l}
                 </th>
               ))}
-              <th className="p-2">Requested off {format(month, 'MMM yyyy')}</th>
-              <th className="p-2">Additional days</th>
+              <th className="p-2" title="Bare numbers default to this month; use M/D (e.g. 10/1-10/3) for a trailing spillover date">
+                Requested off {format(month, 'MMM yyyy')}
+              </th>
+              <th className="p-2" title="Bare numbers default to this month; use M/D (e.g. 10/1-10/3) for a trailing spillover date">
+                Additional days
+              </th>
               <th className="p-2">Additional days location</th>
               <th className="p-2">Defaults &amp; ranks</th>
               <th className="p-2 text-right">Generate</th>
@@ -626,7 +677,7 @@ export function MonthlySetupPage() {
                       <input
                         className="w-40 rounded border border-gray-300 px-2 py-1 text-xs"
                         value={d.offText}
-                        placeholder="1-3, 8-11"
+                        placeholder="1-3, 8-11, 10/1"
                         onChange={(e) => setOffText(s.id, e.target.value)}
                       />
                     </td>
@@ -634,7 +685,7 @@ export function MonthlySetupPage() {
                       <input
                         className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
                         value={d.addlText}
-                        placeholder="3, 6"
+                        placeholder="3, 6, 10/1"
                         onChange={(e) => setField(s.id, { addlText: e.target.value })}
                       />
                     </td>
@@ -702,14 +753,16 @@ export function MonthlySetupPage() {
             </label>
             <p className="mt-1 text-xs text-orange-700">
               One per line, formatted <code className="rounded bg-orange-100 px-1">day: text</code> — e.g.{' '}
-              <code className="rounded bg-orange-100 px-1">20: Monthly staff meeting</code>. Shows as a callout on
-              that date on the calendar. Doesn't carry forward to next month.
+              <code className="rounded bg-orange-100 px-1">20: Monthly staff meeting</code>. Use{' '}
+              <code className="rounded bg-orange-100 px-1">M/D: text</code> for a trailing spillover date, e.g.{' '}
+              <code className="rounded bg-orange-100 px-1">10/1: Vendor visit</code>. Shows as a callout on that
+              date on the calendar. Doesn't carry forward to next month.
             </p>
             <textarea
               className="mt-2 w-full max-w-md rounded border border-orange-300 px-2 py-1.5 text-sm"
               rows={3}
               value={remindersText}
-              placeholder={'20: Monthly staff meeting\n5: Vendor visit'}
+              placeholder={'20: Monthly staff meeting\n10/1: Vendor visit'}
               onChange={(e) => setRemindersText(e.target.value)}
               onBlur={saveRemindersNow}
             />

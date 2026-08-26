@@ -1,5 +1,5 @@
 export * from './types';
-export { generateMonth } from './generateMonth';
+export { generateMonth, monthWeekInterval, weekBlockFor } from './generateMonth';
 export { generatePersonMonth } from './generatePersonMonth';
 export { generateSingleDay } from './generateSingleDay';
 export { computeWarnings } from './warnings';

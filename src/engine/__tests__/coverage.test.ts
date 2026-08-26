@@ -7,7 +7,7 @@ import { allWorking, makeOff } from './patterns.fixture';
 
 function setup(patterns: MonthlyPattern[], staff = buildRoster()) {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
-  const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+  const day = resolveAttendance('2026-06-01', 1, staff, index);
   return { day, index };
 }
 
@@ -90,7 +90,7 @@ describe('Step 3 — provider coverage', () => {
     assignCoverage(day1, staff, index, count);
     const first = staff.find((s) => covers(day1, s.id).includes('monica'))!.id;
 
-    const day2 = resolveAttendance('2026-06-02', 2, 2, staff, index);
+    const day2 = resolveAttendance('2026-06-02', 2, staff, index);
     // Re-mark Monica out on day 2 (same patterns, she's off all month here).
     assignCoverage(day2, staff, index, count);
     const second = staff.find((s) => covers(day2, s.id).includes('monica'))!.id;

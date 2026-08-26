@@ -7,8 +7,9 @@ import { allWorking, patch } from './patterns.fixture';
 describe('generateMonth — orchestration', () => {
   const staff = buildRoster();
   const month = parseISO('2026-06-01');
-  // The view spans whole weeks (Jun 1 → Jul 3), so include July's patterns too.
-  const patterns = [...allWorking(staff), ...allWorking(staff, 'kona', '2026-07-01')];
+  // The view spans whole weeks (Jun 1 → Jul 3), but spillover days (Jul 1-3)
+  // are governed by this SAME set of June patterns — no separate July row.
+  const patterns = allWorking(staff);
 
   it('only generates assignments for weekdays (Mon–Fri)', () => {
     const { assignments } = generateMonth({ staff, patterns, month });
@@ -51,8 +52,7 @@ describe('generateMonth — orchestration', () => {
     const june = patch(allWorking(staff, 'kona'), 'tricia', {
       locationByWeekday: { '1': 'alternating', '2': 'alternating', '3': 'alternating', '4': 'alternating', '5': 'alternating' },
     });
-    const alt = [...june, ...allWorking(staff, 'kona', '2026-07-01')];
-    const { assignments } = generateMonth({ staff, patterns: alt, month });
+    const { assignments } = generateMonth({ staff, patterns: june, month });
     const loc = (date: string) =>
       assignments.find((a) => a.staffId === 'tricia' && a.date === date)?.location;
     expect(loc('2026-06-01')).toBe('kona'); // week 0 (block 0)
@@ -60,6 +60,17 @@ describe('generateMonth — orchestration', () => {
     expect(loc('2026-06-15')).toBe('waimea'); // week 2 (block 1)
     expect(loc('2026-06-22')).toBe('waimea'); // week 3 (block 1)
     expect(loc('2026-06-29')).toBe('kona'); // week 4 (block 0 again)
+  });
+
+  it('staffs spillover days from the current month\'s own patterns, with no next-month row at all', () => {
+    // Regression: previously, trailing spillover days (Jul 1-3 here) needed a
+    // SEPARATE next-month monthly_patterns row or they'd render everyone off.
+    const { assignments } = generateMonth({ staff, patterns, month });
+    const july1 = assignments.filter((a) => a.date === '2026-07-01');
+    expect(july1.length).toBe(staff.length);
+    expect(july1.some((a) => a.location !== 'off')).toBe(true);
+    const tricia = july1.find((a) => a.staffId === 'tricia');
+    expect(tricia?.location).toBe('kona');
   });
 
   it('skips holidays entirely — no assignments, no warnings', () => {

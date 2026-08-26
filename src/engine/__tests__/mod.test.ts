@@ -7,7 +7,7 @@ import { allWorking, makeOff, patch } from './patterns.fixture';
 
 function setup(patterns: MonthlyPattern[], staff = buildRoster()) {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
-  const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+  const day = resolveAttendance('2026-06-01', 1, staff, index);
   return { day, index };
 }
 

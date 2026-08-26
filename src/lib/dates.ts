@@ -4,6 +4,7 @@ import {
   eachDayOfInterval,
   endOfMonth,
   format,
+  getDate,
   getDay,
   getMonth,
   getYear,
@@ -97,4 +98,24 @@ export function isoOf(d: Date): string {
 
 export function parseIso(s: string): Date {
   return parseISO(s);
+}
+
+/**
+ * Parse a `?month=` URL param into a Date, or null if it's missing or not a
+ * real calendar date. Guards against a malformed/out-of-range URL crashing
+ * the app — e.g. "banana" (unparseable) or "2026-13-01", which JS Date's
+ * default overflow behavior would otherwise silently roll into Feb 2027
+ * instead of being rejected.
+ */
+export function parseMonthParam(param: string | null | undefined): Date | null {
+  if (!param) return null;
+  const m = param.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const candidate = new Date(year, month - 1, day);
+  if (getMonth(candidate) !== month - 1 || getDate(candidate) !== day) return null;
+  return candidate;
 }

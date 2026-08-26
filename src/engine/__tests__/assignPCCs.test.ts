@@ -11,7 +11,7 @@ const ALL_WAIMEA = {
 
 function dayFrom(patterns: MonthlyPattern[], staff = buildRoster()) {
   const index = new Map(patterns.map((p) => [p.staffId, p]));
-  return resolveAttendance('2026-06-01', 1, 1, staff, index);
+  return resolveAttendance('2026-06-01', 1, staff, index);
 }
 
 function coversCount(day: DayMap, covererId: string): number {
@@ -81,7 +81,7 @@ describe('Step 5 — assign PCCs / aesthetic concierge', () => {
     // Christie defaults to Abby; both working at kona -> Christie should cover Abby.
     const patterns = patch(allWorking(staff), 'christie', { defaultTargetId: 'abby' });
     const index = new Map(patterns.map((p) => [p.staffId, p]));
-    const day = resolveAttendance('2026-06-01', 1, 1, staff, index);
+    const day = resolveAttendance('2026-06-01', 1, staff, index);
     assignPCCs(day, staff, index);
     expect(day.get('christie')?.pccCoversIds).toContain('abby');
   });

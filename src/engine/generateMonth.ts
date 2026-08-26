@@ -4,7 +4,6 @@ import {
   eachDayOfInterval,
   endOfMonth,
   format,
-  getDate,
   getDay,
   parseISO,
   startOfMonth,
@@ -37,9 +36,11 @@ import type {
 export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
   const { staff, patterns, month, holidays } = input;
 
-  // Patterns indexed by staff AND calendar month, so trailing days that spill into
-  // the next month resolve against that month's pattern (not the current month's).
-  const patternsByMonth = indexPatternsByMonth(patterns);
+  // One row per staff member, used for EVERY date in the view — including
+  // trailing spillover days, which are governed by this same month's own
+  // patterns (via real dates in requestedOffDates/additionalDaysDates), not a
+  // separate next-month row.
+  const patternsByStaff = patternsByStaffMap(patterns);
   const assignments: Assignment[] = [];
   const warnings: GenerateMonthResult['warnings'] = [];
 
@@ -56,25 +57,9 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
     const isoDate = format(date, 'yyyy-MM-dd');
     if (holidays?.has(isoDate)) continue; // office closed: no staff, no warnings
 
-    const dayOfMonth = getDate(date);
-    // 'alternating' locations switch every two weeks within the month view: the
-    // week index (0-based from the view's first Monday) grouped into two-week
-    // blocks, then alternated. Weeks 0–1 → block 0, weeks 2–3 → block 1, weeks
-    // 4–5 → block 0, and so on.
-    const weekIndex = Math.floor(differenceInCalendarDays(date, interval.start) / 7);
-    const weekBlock = (Math.floor(weekIndex / 2) % 2) as 0 | 1;
+    const weekBlock = weekBlockFor(date, interval.start);
 
-    const patternsByStaff = patternsByMonth.get(format(startOfMonth(date), 'yyyy-MM-dd')) ?? EMPTY;
-
-    const result = generateDayAssignments(
-      isoDate,
-      dayOfMonth,
-      weekday,
-      weekBlock,
-      staff,
-      patternsByStaff,
-      coverageCount,
-    );
+    const result = generateDayAssignments(isoDate, weekday, weekBlock, staff, patternsByStaff, coverageCount);
     assignments.push(...result.assignments);
     warnings.push(...result.warnings);
   }
@@ -90,7 +75,6 @@ export function generateMonth(input: GenerateMonthInput): GenerateMonthResult {
  */
 export function generateDayAssignments(
   isoDate: string,
-  dayOfMonth: number,
   weekday: number,
   weekBlock: 0 | 1,
   staff: Staff[],
@@ -98,7 +82,7 @@ export function generateDayAssignments(
   coverageCount: Record<string, number>,
 ): { assignments: Assignment[]; warnings: Warning[] } {
   // Step 1 — Attendance & locations.
-  const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekBlock);
+  const day = resolveAttendance(isoDate, weekday, staff, patternsByStaff, weekBlock);
   // Step 2 — MOD.
   assignMod(day, staff, patternsByStaff);
   // Step 3 — Provider coverage (even across the month).
@@ -118,24 +102,9 @@ export function generateDayAssignments(
   return { assignments: dayAssignments, warnings };
 }
 
-export const EMPTY: Map<string, MonthlyPattern> = new Map();
-
-/** Group patterns by calendar month → (staffId → pattern). */
-export function indexPatternsByMonth(
-  patterns: MonthlyPattern[],
-): Map<string, Map<string, MonthlyPattern>> {
-  const byMonth = new Map<string, Map<string, MonthlyPattern>>();
-  for (const p of patterns) {
-    // p.month is already a first-of-month ISO key (yyyy-MM-dd).
-    const monthKey = p.month.slice(0, 10);
-    let byStaff = byMonth.get(monthKey);
-    if (!byStaff) {
-      byStaff = new Map();
-      byMonth.set(monthKey, byStaff);
-    }
-    byStaff.set(p.staffId, p);
-  }
-  return byMonth;
+/** Index one month's patterns by staffId, for use across its entire displayed view. */
+export function patternsByStaffMap(patterns: MonthlyPattern[]): Map<string, MonthlyPattern> {
+  return new Map(patterns.map((p) => [p.staffId, p]));
 }
 
 /**
@@ -149,4 +118,16 @@ export function monthWeekInterval(month: Date): { start: Date; end: Date } {
   let lastMonday = endOfMonth(month);
   while (getDay(lastMonday) !== 1) lastMonday = subDays(lastMonday, 1);
   return { start, end: addDays(lastMonday, 4) };
+}
+
+/**
+ * The two-week alternating block (0 or 1) a date falls in, counted continuously
+ * from the view's first Monday (`viewStart`, i.e. `monthWeekInterval(month).start`)
+ * — including trailing spillover days, which continue the same block sequence
+ * rather than resetting. Weeks 0–1 → block 0, weeks 2–3 → block 1, weeks 4–5 →
+ * block 0, and so on.
+ */
+export function weekBlockFor(date: Date, viewStart: Date): 0 | 1 {
+  const weekIndex = Math.floor(differenceInCalendarDays(date, viewStart) / 7);
+  return (Math.floor(weekIndex / 2) % 2) as 0 | 1;
 }

@@ -1,4 +1,4 @@
-import { eachDayOfInterval, format, getDate, getDay, differenceInCalendarDays, parseISO, startOfMonth } from 'date-fns';
+import { eachDayOfInterval, format, getDay, parseISO } from 'date-fns';
 import { resolveAttendance } from './attendance';
 import { assignMod } from './mod';
 import { assignCoverage } from './coverage';
@@ -6,7 +6,7 @@ import { assignMAs } from './assignMAs';
 import { assignPCCs } from './assignPCCs';
 import { assignShipping } from './shipping';
 import { assignInventory, isLastWeekdayOfMonth } from './inventory';
-import { EMPTY, indexPatternsByMonth, monthWeekInterval } from './generateMonth';
+import { monthWeekInterval, patternsByStaffMap, weekBlockFor } from './generateMonth';
 import type { Assignment, GeneratePersonMonthInput } from './types';
 
 /**
@@ -27,7 +27,7 @@ import type { Assignment, GeneratePersonMonthInput } from './types';
 export function generatePersonMonth(input: GeneratePersonMonthInput): Assignment[] {
   const { staffId, staff, patterns, month, holidays, existingAssignments } = input;
 
-  const patternsByMonth = indexPatternsByMonth(patterns);
+  const patternsByStaff = patternsByStaffMap(patterns);
   const existingByDate = indexExistingByDate(existingAssignments);
   const results: Assignment[] = [];
   const coverageCount: Record<string, number> = {};
@@ -42,14 +42,10 @@ export function generatePersonMonth(input: GeneratePersonMonthInput): Assignment
     const isoDate = format(date, 'yyyy-MM-dd');
     if (holidays?.has(isoDate)) continue; // office closed: no staff, no warnings
 
-    const dayOfMonth = getDate(date);
-    const weekIndex = Math.floor(differenceInCalendarDays(date, interval.start) / 7);
-    const weekBlock = (Math.floor(weekIndex / 2) % 2) as 0 | 1;
-
-    const patternsByStaff = patternsByMonth.get(format(startOfMonth(date), 'yyyy-MM-dd')) ?? EMPTY;
+    const weekBlock = weekBlockFor(date, interval.start);
 
     // Step 1 — Attendance & locations (fresh for everyone, including the target).
-    const day = resolveAttendance(isoDate, dayOfMonth, weekday, staff, patternsByStaff, weekBlock);
+    const day = resolveAttendance(isoDate, weekday, staff, patternsByStaff, weekBlock);
 
     // Lock everyone else to their real persisted state for this day.
     const existingToday = existingByDate.get(isoDate);

@@ -35,8 +35,8 @@ export function allWorking(
     month,
     usualWeekdays: [1, 2, 3, 4, 5],
     locationByWeekday: { '1': location, '2': location, '3': location, '4': location, '5': location },
-    requestedOffDays: [],
-    additionalDays: [],
+    requestedOffDates: [],
+    additionalDaysDates: [],
     additionalDaysLocation: null,
     defaultTargetId: null,
     wantsTwoMas: PROVIDER_RANK[s.id] === 1, // Tricia, preserving the original "2 MAs first"
