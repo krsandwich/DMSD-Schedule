@@ -143,7 +143,7 @@ export function MonthlySetupPage() {
   const remindersQuery = useMonthReminders(month);
   const saveReminders = useSaveReminders(month);
   const replacePerson = useReplacePersonMonth(month);
-  const replaceDay = useReplaceDayAssignments(month);
+  const replaceDay = useReplaceDayAssignments();
   const hiddenQuery = useHiddenMonths();
   const setHidden = useSetMonthHidden();
 
@@ -296,21 +296,37 @@ export function MonthlySetupPage() {
     pending.current.add('__holidays__');
     refreshBusy();
     try {
+      // Force fresh reads rather than trusting whatever's cached. Two distinct
+      // staleness risks here, both silent: (1) if `oldDays` is stale/undefined
+      // (e.g. a fast edit right after this page mounted), the "removed" list
+      // can come back wrong — including empty, even though the new list still
+      // gets saved correctly below (that save is unconditional, independent
+      // of this diff), which looks exactly like "the holiday was cleared but
+      // never regenerated". (2) generateSingleDay needs real patterns/staff —
+      // an empty fallback silently resolves everyone "off" and writes zero
+      // rows, indistinguishable from the day never having been generated.
+      const [freshHolidays, freshStaff] = await Promise.all([holidaysQuery.refetch(), staffQuery.refetch()]);
       const newDays = parseDayRanges(holidayText);
-      const oldDays = holidaysQuery.data ?? [];
+      const oldDays = freshHolidays.data ?? [];
       const oldSet = new Set(oldDays);
       const newSet = new Set(newDays);
       const added = newDays.filter((d) => !oldSet.has(d));
       const removed = oldDays.filter((d) => !newSet.has(d));
+      const freshStaffList = (freshStaff.data ?? []).sort(
+        (a, b) => roleRank(a.role) - roleRank(b.role) || a.displayName.localeCompare(b.displayName),
+      );
 
       for (const d of added) {
         const iso = daysToIso(month, [d])[0];
         await replaceDay.mutateAsync({ date: iso, assignments: [] });
       }
-      for (const d of removed) {
-        const iso = daysToIso(month, [d])[0];
-        const generated = generateSingleDay(parseISO(iso), staff, patternsQuery.data ?? []);
-        await replaceDay.mutateAsync({ date: iso, assignments: generated });
+      if (removed.length) {
+        const freshPatterns = await patternsQuery.refetch();
+        for (const d of removed) {
+          const iso = daysToIso(month, [d])[0];
+          const generated = generateSingleDay(parseISO(iso), freshStaffList, freshPatterns.data ?? []);
+          await replaceDay.mutateAsync({ date: iso, assignments: generated });
+        }
       }
 
       await saveHolidays.mutateAsync(newDays);

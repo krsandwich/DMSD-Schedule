@@ -91,7 +91,7 @@ export function useReplacePersonMonth(month: Date) {
  * newly-added holiday clears that day (pass `assignments: []`); a
  * newly-removed holiday fills it back in (pass the freshly generated day).
  */
-export function useReplaceDayAssignments(month: Date) {
+export function useReplaceDayAssignments() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ date, assignments }: { date: string; assignments: Assignment[] }) => {
@@ -103,7 +103,12 @@ export function useReplaceDayAssignments(month: Date) {
         if (ins.error) throw ins.error;
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: assignmentsKey(month) }),
+    // Invalidate every month's cached assignments, not just `month`'s own key.
+    // The changed date can belong to a DIFFERENT month's calendar view too —
+    // e.g. a holiday toggle on Oct 2 also affects September's view, since
+    // Oct 1-3 render as September's trailing spillover week. Scoping this to
+    // just `assignmentsKey(month)` left other months' views silently stale.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['assignments'] }),
   });
 }
 
